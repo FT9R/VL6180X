@@ -52,6 +52,10 @@ typedef struct vl6180x_s {
     vl6180x_error_t error; // Driver error code
 } vl6180x_t;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief Initialize sensor with settings from ST application note AN4545,
  * section "SR03 settings" - "Mandatory : private registers"
@@ -159,3 +163,7 @@ uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev);
  * or `VL6180X_RANGE_ERROR_DRIVER` in case of driver error
  */
 vl6180x_range_error_t vl6180x_ReadRangeStatus(vl6180x_t *dev);
+
+#ifdef __cplusplus
+}
+#endif
