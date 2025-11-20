@@ -1,7 +1,7 @@
 # VL6180X Driver
 
 A lightweight, platform-independent, dependency-free C driver for the **ST VL6180X Time-of-Flight distance and ambient light sensor**.  
-This driver provides initialization, configuration, and measurement functions for range (mm) and ALS (ambient light) using an abstracted I²C interface.
+Provides initialization, configuration, and measurement functions for range (mm) and ALS (ambient light) using an abstracted I²C interface.
 
 ## Overview
 This driver based on [`Pololu's VL6180X library for Arduino`](https://github.com/pololu/vl6180x-arduino) and provides:
