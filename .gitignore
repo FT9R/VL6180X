@@ -1,0 +1,9 @@
+# Hidden
+.*
+!/.gitignore
+
+# Build dirs
+**/EWARM/VL6180X
+
+# Settings
+**/EWARM/settings
