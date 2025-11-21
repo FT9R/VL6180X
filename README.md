@@ -16,7 +16,7 @@ This driver based on [`Pololu's VL6180X library for Arduino`](https://github.com
 ## Features
 
 - Platform-independent
-- A few devices support with separated handles
+- A few devices on the same and different I2C bus support with separated handles
 - Hardware reset support  
 - Device ID validation  
 - Single-shot & continuous range/ALS measurement  
