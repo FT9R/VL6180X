@@ -131,7 +131,7 @@ void vl6180x_StopContinuous(vl6180x_t *dev);
  * @brief Performs a single-shot ranging measurement
  * @param dev device handle
  * @return measured range in millimeters or `UINT16_MAX` in case of error/object absence
- * @note this function automatically scales the result according to the current scaling factor
+ * @note This function automatically scales the result according to the current scaling factor
  */
 uint16_t vl6180x_ReadRangeSingle(vl6180x_t *dev);
 
@@ -139,9 +139,18 @@ uint16_t vl6180x_ReadRangeSingle(vl6180x_t *dev);
  * @brief Returns a range reading when continuous mode is activated
  * @param dev device handle
  * @return measured range in millimeters or `UINT16_MAX` in case of error/object absence
- * @note this function automatically scales the result according to the current scaling factor
+ * @note This function automatically scales the result according to the current scaling factor
  */
 uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev);
+
+/**
+ * @brief Immediately reads range result if available, otherwise returns `UINT16_MAX`
+ * @param dev device handle
+ * @return measured range in millimeters or `UINT16_MAX` if result is not ready or in case of error/object absence
+ * @note This function automatically scales the result according to the current scaling factor.
+ * @note Interrupt pin (gpio1) can be checked before calling this function to avoid unnecessary I2C traffic
+ */
+uint16_t vl6180x_ReadRangeAsync(vl6180x_t *dev);
 
 /**
  * @brief Performs a single-shot ambient light measurement
@@ -156,6 +165,14 @@ uint16_t vl6180x_ReadAmbientSingle(vl6180x_t *dev);
  * @return measured ambient light level or `0` in case of error
  */
 uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev);
+
+/**
+ * @brief Immediately reads ambient light result if available, otherwise returns `0`
+ * @param dev device handle
+ * @return measured ambient light level or `0` if result is not ready or in case of error
+ * @note Interrupt pin (gpio1) can be checked before calling this function to avoid unnecessary I2C traffic
+ */
+uint16_t vl6180x_ReadAmbientAsync(vl6180x_t *dev);
 
 /**
  * @brief Get ranging success/error status code (Use it before using a measurement)

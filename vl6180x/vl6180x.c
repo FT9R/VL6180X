@@ -269,6 +269,9 @@ void vl6180x_ConfigureDefault(vl6180x_t *dev)
     // disable interleaved mode
     WRITE_REG(INTERLEAVED_MODE__ENABLE, 0, 1);
 
+    // configure interrupt pin gpio1: out, active-low
+    WRITE_REG(SYSTEM__MODE_GPIO1, 0x10, 1);
+
     // reset range scaling factor to 1x
     internalFunctionUsage = true;
     vl6180x_SetScaling(dev, 1);
@@ -407,14 +410,33 @@ uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev)
     timeout = dev->sampleReadyTimeout > 0 ? dev->sampleReadyTimeout : 1;
     while (true)
     {
-        dev->interface.delay(1);
         READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
         if ((interruptStatus & 0x07) == 0x04)
             break;
 
+        dev->interface.delay(1);
         if (--timeout == 0)
             goto error;
     }
+
+    READ_REG(RESULT__RANGE_VAL, range, 1);
+    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1);
+
+error:
+    return (range == UINT8_MAX) ? UINT16_MAX : (uint16_t) dev->scaling * range;
+}
+
+uint16_t vl6180x_ReadRangeAsync(vl6180x_t *dev)
+{
+    uint8_t range = UINT8_MAX;
+    uint8_t interruptStatus = 0;
+
+    if (dev == NULL)
+        goto error;
+
+    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
+    if ((interruptStatus & 0x07) != 0x04)
+        goto error; // Sample not ready yet
 
     READ_REG(RESULT__RANGE_VAL, range, 1);
     WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1);
@@ -453,11 +475,11 @@ uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev)
     timeout = dev->sampleReadyTimeout > 0 ? dev->sampleReadyTimeout : 1;
     while (true)
     {
-        dev->interface.delay(1);
         READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
         if ((interruptStatus & 0x38) == 0x20)
             break;
 
+        dev->interface.delay(1);
         if (--timeout == 0)
             goto error;
     }
@@ -467,6 +489,51 @@ uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev)
 
 error:
     return ambient;
+}
+
+uint16_t vl6180x_ReadAmbientAsync(vl6180x_t *dev)
+{
+    uint16_t ambient = 0;
+    uint8_t interruptStatus = 0;
+
+    if (dev == NULL)
+        goto error;
+
+    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
+    if ((interruptStatus & 0x38) != 0x20)
+        goto error; // Sample not ready yet
+
+    READ_REG(RESULT__ALS_VAL, ambient, 2);
+    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x02, 1);
+
+error:
+    return ambient;
+}
+
+bool vl6180x_GetRangeReady(vl6180x_t *dev)
+{
+    uint8_t interruptStatus = 0;
+
+    if (dev == NULL)
+        goto error;
+
+    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
+
+error:
+    return (interruptStatus & 0x07) == 0x04;
+}
+
+bool vl6180x_GetAmbientReady(vl6180x_t *dev)
+{
+    uint8_t interruptStatus = 0;
+
+    if (dev == NULL)
+        goto error;
+
+    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
+
+error:
+    return (interruptStatus & 0x38) == 0x20;
 }
 
 vl6180x_range_error_t vl6180x_ReadRangeStatus(vl6180x_t *dev)
