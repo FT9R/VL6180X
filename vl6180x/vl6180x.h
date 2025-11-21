@@ -68,15 +68,16 @@ void vl6180x_Init(vl6180x_t *dev, bool reset);
 /**
  * @brief Set the I2C slave address of the sensor
  * @param dev device handle
- * @param new_addr new I2C address
+ * @param newAddr new I2C address
  */
-void vl6180x_SetAddress(vl6180x_t *dev, uint8_t new_addr);
+void vl6180x_SetAddress(vl6180x_t *dev, uint8_t newAddr);
 
 /**
  * @brief Configure some settings for the sensor's default behavior from AN4545
  *  - "Recommended : Public registers" and "Optional: Public registers"
  * @param dev device handle
- * @note This function does not set up GPIO1 as an interrupt output as suggested
+ * @note This function DOES set up GPIO1 as an interrupt output as suggested
+ * @note `dev.ptp_offset` can be changed before call to adjust the part-to-part range offset
  */
 void vl6180x_ConfigureDefault(vl6180x_t *dev);
 
@@ -86,8 +87,9 @@ Increasing the scaling to 2x or 3x makes it give raw values in units of 2 mm or 
 scaling factor increases the sensor's potential maximum range but reduces its resolution
  * @param dev device handle
  * @param new_scaling new scaling factor (1, 2, or 3)
+ * @param new_offset new part-to-part range offset in mm. Provide `dev.ptp_offset` to keep existing offset
  */
-void vl6180x_SetScaling(vl6180x_t *dev, uint8_t new_scaling);
+void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newOffset);
 
 /**
  * @brief Start continuous ranging measurements with the given period

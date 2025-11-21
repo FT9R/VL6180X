@@ -53,7 +53,6 @@ static void vl6180x_Delay(uint32_t ms)
 void vl6180x_SetUp(vl6180x_t *dev)
 {
     memset(dev, 0, sizeof(vl6180x_t));
-
     dev->interface.handle = &hi2c1;
     dev->interface.read = vl6180_Read;
     dev->interface.write = vl6180_Write;

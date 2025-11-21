@@ -214,13 +214,13 @@ error:
     return;
 }
 
-void vl6180x_SetAddress(vl6180x_t *dev, uint8_t new_addr)
+void vl6180x_SetAddress(vl6180x_t *dev, uint8_t newAddr)
 {
     if (dev == NULL)
         goto error;
 
-    WRITE_REG(I2C_SLAVE__DEVICE_ADDRESS, new_addr & 0x7F, 1);
-    dev->address = new_addr;
+    WRITE_REG(I2C_SLAVE__DEVICE_ADDRESS, newAddr & 0x7F, 1);
+    dev->address = newAddr;
 
 error:
     return;
@@ -274,14 +274,14 @@ void vl6180x_ConfigureDefault(vl6180x_t *dev)
 
     // reset range scaling factor to 1x
     internalFunctionUsage = true;
-    vl6180x_SetScaling(dev, 1);
+    vl6180x_SetScalingAndOffset(dev, 1, dev->ptp_offset);
     internalFunctionUsage = false;
 
 error:
     return;
 }
 
-void vl6180x_SetScaling(vl6180x_t *dev, uint8_t new_scaling)
+void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newOffset)
 {
     uint8_t const DefaultCrosstalkValidHeight = 20; // default value of SYSRANGE__CROSSTALK_VALID_HEIGHT
     uint8_t rce = 0;
@@ -289,16 +289,17 @@ void vl6180x_SetScaling(vl6180x_t *dev, uint8_t new_scaling)
     if (dev == NULL)
         goto error;
 
-    if ((new_scaling < 1) || (new_scaling > 3))
+    if ((newScaling < 1) || (newScaling > 3))
     {
         dev->error = VL6180X_ERR_ARG;
         goto error;
     }
 
-    dev->scaling = new_scaling;
+    dev->scaling = newScaling;
     WRITE_REG(RANGE_SCALER, ScalerValues[dev->scaling], 2);
 
     // apply scaling on part-to-part offset
+    dev->ptp_offset = newOffset;
     WRITE_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, dev->ptp_offset / dev->scaling, 1);
 
     // apply scaling on CrossTalkValidHeight
