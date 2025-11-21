@@ -119,8 +119,10 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
     uint8_t freshOut = 1;
     uint16_t s = 0;
 
-    if (dev->address == 0)
-        dev->address = DEVICE_ADDRESS;
+    if (dev == NULL)
+        goto error;
+
+    dev->address = (dev->address == 0) ? DEVICE_ADDRESS : dev->address;
     dev->error = VL6180X_ERR_NONE;
     dev->state = VL6180X_STATE_IDLE; // FIXME: state check/set at every operation (not internal)
 
@@ -214,6 +216,9 @@ error:
 
 void vl6180x_SetAddress(vl6180x_t *dev, uint8_t new_addr)
 {
+    if (dev == NULL)
+        goto error;
+
     WRITE_REG(I2C_SLAVE__DEVICE_ADDRESS, new_addr & 0x7F, 1);
     dev->address = new_addr;
 
@@ -223,6 +228,9 @@ error:
 
 void vl6180x_ConfigureDefault(vl6180x_t *dev)
 {
+    if (dev == NULL)
+        goto error;
+
     // "Recommended : Public registers"
 
     // readout__averaging_sample_period = 48
@@ -275,9 +283,14 @@ void vl6180x_SetScaling(vl6180x_t *dev, uint8_t new_scaling)
     uint8_t const DefaultCrosstalkValidHeight = 20; // default value of SYSRANGE__CROSSTALK_VALID_HEIGHT
     uint8_t rce = 0;
 
-    // do nothing if scaling value is invalid
-    if (new_scaling < 1 || new_scaling > 3)
-        return;
+    if (dev == NULL)
+        goto error;
+
+    if ((new_scaling < 1) || (new_scaling > 3))
+    {
+        dev->error = VL6180X_ERR_ARG;
+        goto error;
+    }
 
     dev->scaling = new_scaling;
     WRITE_REG(RANGE_SCALER, ScalerValues[dev->scaling], 2);
@@ -300,7 +313,12 @@ error:
 
 void vl6180x_StartRangeContinuous(vl6180x_t *dev, uint16_t period)
 {
-    int16_t period_reg = (int16_t) (period / 10) - 1;
+    int32_t period_reg;
+
+    if (dev == NULL)
+        goto error;
+
+    period_reg = (int32_t) (period / 10) - 1;
     period_reg = constrain(period_reg, 0, 254);
 
     WRITE_REG(SYSRANGE__INTERMEASUREMENT_PERIOD, period_reg, 1);
@@ -312,7 +330,12 @@ error:
 
 void vl6180x_StartAmbientContinuous(vl6180x_t *dev, uint16_t period)
 {
-    int16_t period_reg = (int16_t) (period / 10) - 1;
+    int32_t period_reg;
+
+    if (dev == NULL)
+        goto error;
+
+    period_reg = (int32_t) (period / 10) - 1;
     period_reg = constrain(period_reg, 0, 254);
 
     WRITE_REG(SYSALS__INTERMEASUREMENT_PERIOD, period_reg, 1);
@@ -324,7 +347,12 @@ error:
 
 void vl6180x_StartInterleavedContinuous(vl6180x_t *dev, uint16_t period)
 {
-    int16_t period_reg = (int16_t) (period / 10) - 1;
+    int32_t period_reg;
+
+    if (dev == NULL)
+        goto error;
+
+    period_reg = (int32_t) (period / 10) - 1;
     period_reg = constrain(period_reg, 0, 254);
 
     WRITE_REG(INTERLEAVED_MODE__ENABLE, 1, 1);
@@ -337,6 +365,9 @@ error:
 
 void vl6180x_StopContinuous(vl6180x_t *dev)
 {
+    if (dev == NULL)
+        goto error;
+
     WRITE_REG(SYSRANGE__START, 0x01, 1);
     WRITE_REG(SYSALS__START, 0x01, 1);
     WRITE_REG(INTERLEAVED_MODE__ENABLE, 0, 1);
@@ -348,6 +379,9 @@ error:
 uint16_t vl6180x_ReadRangeSingle(vl6180x_t *dev)
 {
     uint8_t range = UINT8_MAX;
+
+    if (dev == NULL)
+        goto error;
 
     WRITE_REG(SYSRANGE__START, 0x01, 1);
     internalFunctionUsage = true;
@@ -361,12 +395,16 @@ error:
 
 uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev)
 {
-    uint32_t timeout = dev->sampleReadyTimeout > 0 ? dev->sampleReadyTimeout : 1;
+    uint32_t timeout;
     uint8_t range = UINT8_MAX;
     uint8_t interruptStatus = 0;
 
+    if (dev == NULL)
+        goto error;
+
     // While computation is not finished
     // only watching if bits 2:0 (mask 0x07) are set to 0b100 (0x04)
+    timeout = dev->sampleReadyTimeout > 0 ? dev->sampleReadyTimeout : 1;
     while (true)
     {
         dev->interface.delay(1);
@@ -389,6 +427,9 @@ uint16_t vl6180x_ReadAmbientSingle(vl6180x_t *dev)
 {
     uint16_t ambient = 0;
 
+    if (dev == NULL)
+        goto error;
+
     WRITE_REG(SYSALS__START, 0x01, 1);
     internalFunctionUsage = true;
     ambient = vl6180x_ReadAmbientContinuous(dev);
@@ -400,12 +441,16 @@ error:
 
 uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev)
 {
-    uint32_t timeout = dev->sampleReadyTimeout > 0 ? dev->sampleReadyTimeout : 1;
+    uint32_t timeout;
     uint16_t ambient = 0;
     uint8_t interruptStatus = 0;
 
+    if (dev == NULL)
+        goto error;
+
     // While computation is not finished
     // only watching if bits 5:3 (mask 0x38) are set to 0b100 (0x20)
+    timeout = dev->sampleReadyTimeout > 0 ? dev->sampleReadyTimeout : 1;
     while (true)
     {
         dev->interface.delay(1);
@@ -427,6 +472,9 @@ error:
 vl6180x_range_error_t vl6180x_ReadRangeStatus(vl6180x_t *dev)
 {
     vl6180x_range_error_t rangeStatus = VL6180X_RANGE_ERROR_DRIVER;
+
+    if (dev == NULL)
+        goto error;
 
     READ_REG(RESULT__RANGE_STATUS, rangeStatus, 1);
 
