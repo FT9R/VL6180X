@@ -107,9 +107,35 @@ typedef enum {
 static uint16_t const ScalerValues[] = {0, 253, 127, 84};
 static bool internalFunctionUsage = false;
 
-static inline int32_t constrain(int32_t x, int32_t lo, int32_t hi)
+static inline int32_t Constrain(int32_t x, int32_t lo, int32_t hi)
 {
     return x < lo ? lo : (x > hi ? hi : x);
+}
+
+static bool StateUpdate(vl6180x_t *dev, vl6180x_state_t stateCheck, vl6180x_state_t stateSet)
+{
+    if (dev == NULL)
+        return false;
+
+    /* Existing errors check */
+    if (dev->error != VL6180X_ERR_NONE)
+        return false;
+
+    /* Prevent driver state check/change if StateUpdate() is called by nested function */
+    if (internalFunctionUsage)
+        return true;
+
+    /* Actual status check */
+    if (dev->state != stateCheck)
+    {
+        dev->error = VL6180X_ERR_STATE;
+        return false;
+    }
+
+    /* Status update */
+    dev->state = stateSet;
+
+    return true;
 }
 
 void vl6180x_Init(vl6180x_t *dev, bool reset)
@@ -124,7 +150,7 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
 
     dev->address = (dev->address == 0) ? DEVICE_ADDRESS : dev->address;
     dev->error = VL6180X_ERR_NONE;
-    dev->state = VL6180X_STATE_IDLE; // FIXME: state check/set at every operation (not internal)
+    dev->state = VL6180X_STATE_INIT;
 
     if (reset)
     {
@@ -210,6 +236,8 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
         dev->ptp_offset *= dev->scaling;
     }
 
+    StateUpdate(dev, VL6180X_STATE_INIT, VL6180X_STATE_IDLE);
+
 error:
     return;
 }
@@ -219,8 +247,13 @@ void vl6180x_SetAddress(vl6180x_t *dev, uint8_t newAddr)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_SET_ADDR))
+        goto error;
+
     WRITE_REG(I2C_SLAVE__DEVICE_ADDRESS, newAddr & 0x7F, 1);
     dev->address = newAddr;
+
+    StateUpdate(dev, VL6180X_STATE_SET_ADDR, VL6180X_STATE_IDLE);
 
 error:
     return;
@@ -229,6 +262,9 @@ error:
 void vl6180x_ConfigureDefault(vl6180x_t *dev)
 {
     if (dev == NULL)
+        goto error;
+
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_CONFIG))
         goto error;
 
     // "Recommended : Public registers"
@@ -277,6 +313,8 @@ void vl6180x_ConfigureDefault(vl6180x_t *dev)
     vl6180x_SetScalingAndOffset(dev, 1, dev->ptp_offset);
     internalFunctionUsage = false;
 
+    StateUpdate(dev, VL6180X_STATE_CONFIG, VL6180X_STATE_IDLE);
+
 error:
     return;
 }
@@ -287,6 +325,9 @@ void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newO
     uint8_t rce = 0;
 
     if (dev == NULL)
+        goto error;
+
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_SET_SCALING))
         goto error;
 
     if ((newScaling < 1) || (newScaling > 3))
@@ -311,6 +352,8 @@ void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newO
     READ_REG(SYSRANGE__RANGE_CHECK_ENABLES, rce, 1);
     WRITE_REG(SYSRANGE__RANGE_CHECK_ENABLES, (rce & 0xFE) | (dev->scaling == 1), 1);
 
+    StateUpdate(dev, VL6180X_STATE_SET_SCALING, VL6180X_STATE_IDLE);
+
 error:
     return;
 }
@@ -322,11 +365,16 @@ void vl6180x_StartRangeContinuous(vl6180x_t *dev, uint16_t period)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_START_RANGE_CONT))
+        goto error;
+
     period_reg = (int32_t) (period / 10) - 1;
-    period_reg = constrain(period_reg, 0, 254);
+    period_reg = Constrain(period_reg, 0, 254);
 
     WRITE_REG(SYSRANGE__INTERMEASUREMENT_PERIOD, period_reg, 1);
     WRITE_REG(SYSRANGE__START, 0x03, 1);
+
+    StateUpdate(dev, VL6180X_STATE_START_RANGE_CONT, VL6180X_STATE_IDLE);
 
 error:
     return;
@@ -339,11 +387,16 @@ void vl6180x_StartAmbientContinuous(vl6180x_t *dev, uint16_t period)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_START_AMBIENT_CONT))
+        goto error;
+
     period_reg = (int32_t) (period / 10) - 1;
-    period_reg = constrain(period_reg, 0, 254);
+    period_reg = Constrain(period_reg, 0, 254);
 
     WRITE_REG(SYSALS__INTERMEASUREMENT_PERIOD, period_reg, 1);
     WRITE_REG(SYSALS__START, 0x03, 1);
+
+    StateUpdate(dev, VL6180X_STATE_START_AMBIENT_CONT, VL6180X_STATE_IDLE);
 
 error:
     return;
@@ -356,12 +409,17 @@ void vl6180x_StartInterleavedContinuous(vl6180x_t *dev, uint16_t period)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_START_INTER_CONT))
+        goto error;
+
     period_reg = (int32_t) (period / 10) - 1;
-    period_reg = constrain(period_reg, 0, 254);
+    period_reg = Constrain(period_reg, 0, 254);
 
     WRITE_REG(INTERLEAVED_MODE__ENABLE, 1, 1);
     WRITE_REG(SYSALS__INTERMEASUREMENT_PERIOD, period_reg, 1);
     WRITE_REG(SYSALS__START, 0x03, 1);
+
+    StateUpdate(dev, VL6180X_STATE_START_INTER_CONT, VL6180X_STATE_IDLE);
 
 error:
     return;
@@ -372,9 +430,14 @@ void vl6180x_StopContinuous(vl6180x_t *dev)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_STOP_CONT))
+        goto error;
+
     WRITE_REG(SYSRANGE__START, 0x01, 1);
     WRITE_REG(SYSALS__START, 0x01, 1);
     WRITE_REG(INTERLEAVED_MODE__ENABLE, 0, 1);
+
+    StateUpdate(dev, VL6180X_STATE_STOP_CONT, VL6180X_STATE_IDLE);
 
 error:
     return;
@@ -387,11 +450,16 @@ uint16_t vl6180x_ReadRangeSingle(vl6180x_t *dev)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_READ_RANGE))
+        goto error;
+
     WRITE_REG(SYSRANGE__START, 0x01, 1);
     internalFunctionUsage = true;
     range = vl6180x_ReadRangeContinuous(dev);
     internalFunctionUsage = false;
     range /= dev->scaling; // ReadRangeContinuous() call scales the result by default
+
+    StateUpdate(dev, VL6180X_STATE_READ_RANGE, VL6180X_STATE_IDLE);
 
 error:
     return (range == UINT8_MAX) ? UINT16_MAX : (uint16_t) dev->scaling * range;
@@ -404,6 +472,9 @@ uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev)
     uint8_t interruptStatus = 0;
 
     if (dev == NULL)
+        goto error;
+
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_READ_RANGE_CONT))
         goto error;
 
     // While computation is not finished
@@ -423,6 +494,8 @@ uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev)
     READ_REG(RESULT__RANGE_VAL, range, 1);
     WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1);
 
+    StateUpdate(dev, VL6180X_STATE_READ_RANGE_CONT, VL6180X_STATE_IDLE);
+
 error:
     return (range == UINT8_MAX) ? UINT16_MAX : (uint16_t) dev->scaling * range;
 }
@@ -435,12 +508,17 @@ uint16_t vl6180x_ReadRangeAsync(vl6180x_t *dev)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_READ_RANGE_ASYNC))
+        goto error;
+
     READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
     if ((interruptStatus & 0x07) != 0x04)
         goto error; // Sample not ready yet
 
     READ_REG(RESULT__RANGE_VAL, range, 1);
     WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1);
+
+    StateUpdate(dev, VL6180X_STATE_READ_RANGE_ASYNC, VL6180X_STATE_IDLE);
 
 error:
     return (range == UINT8_MAX) ? UINT16_MAX : (uint16_t) dev->scaling * range;
@@ -453,10 +531,15 @@ uint16_t vl6180x_ReadAmbientSingle(vl6180x_t *dev)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_READ_AMBIENT))
+        goto error;
+
     WRITE_REG(SYSALS__START, 0x01, 1);
     internalFunctionUsage = true;
     ambient = vl6180x_ReadAmbientContinuous(dev);
     internalFunctionUsage = false;
+
+    StateUpdate(dev, VL6180X_STATE_READ_AMBIENT, VL6180X_STATE_IDLE);
 
 error:
     return ambient;
@@ -469,6 +552,9 @@ uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev)
     uint8_t interruptStatus = 0;
 
     if (dev == NULL)
+        goto error;
+
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_READ_AMBIENT_CONT))
         goto error;
 
     // While computation is not finished
@@ -488,6 +574,8 @@ uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev)
     READ_REG(RESULT__ALS_VAL, ambient, 2);
     WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x02, 1);
 
+    StateUpdate(dev, VL6180X_STATE_READ_AMBIENT_CONT, VL6180X_STATE_IDLE);
+
 error:
     return ambient;
 }
@@ -500,6 +588,9 @@ uint16_t vl6180x_ReadAmbientAsync(vl6180x_t *dev)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_READ_AMBIENT_ASYNC))
+        goto error;
+
     READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
     if ((interruptStatus & 0x38) != 0x20)
         goto error; // Sample not ready yet
@@ -507,34 +598,10 @@ uint16_t vl6180x_ReadAmbientAsync(vl6180x_t *dev)
     READ_REG(RESULT__ALS_VAL, ambient, 2);
     WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x02, 1);
 
+    StateUpdate(dev, VL6180X_STATE_READ_AMBIENT_ASYNC, VL6180X_STATE_IDLE);
+
 error:
     return ambient;
-}
-
-bool vl6180x_GetRangeReady(vl6180x_t *dev)
-{
-    uint8_t interruptStatus = 0;
-
-    if (dev == NULL)
-        goto error;
-
-    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
-
-error:
-    return (interruptStatus & 0x07) == 0x04;
-}
-
-bool vl6180x_GetAmbientReady(vl6180x_t *dev)
-{
-    uint8_t interruptStatus = 0;
-
-    if (dev == NULL)
-        goto error;
-
-    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
-
-error:
-    return (interruptStatus & 0x38) == 0x20;
 }
 
 vl6180x_range_error_t vl6180x_ReadRangeStatus(vl6180x_t *dev)
@@ -544,7 +611,12 @@ vl6180x_range_error_t vl6180x_ReadRangeStatus(vl6180x_t *dev)
     if (dev == NULL)
         goto error;
 
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_READ_RANGE_STATUS))
+        goto error;
+
     READ_REG(RESULT__RANGE_STATUS, rangeStatus, 1);
+
+    StateUpdate(dev, VL6180X_STATE_READ_RANGE_STATUS, VL6180X_STATE_IDLE);
 
 error:
     return rangeStatus == VL6180X_RANGE_ERROR_DRIVER ? rangeStatus : (vl6180x_range_error_t) (rangeStatus >> 4);
