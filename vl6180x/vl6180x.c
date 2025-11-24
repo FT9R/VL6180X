@@ -148,6 +148,14 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
     if (dev == NULL)
         goto error;
 
+    /* Check platform */
+    if (dev->interface.read == NULL || dev->interface.write == NULL || dev->interface.ce == NULL ||
+        dev->interface.delay == NULL)
+    {
+        dev->error = VL6180X_ERR_PLATFORM;
+        goto error;
+    }
+
     dev->address = (dev->address == 0) ? DEVICE_ADDRESS : dev->address;
     dev->error = VL6180X_ERR_NONE;
     dev->state = VL6180X_STATE_INIT;

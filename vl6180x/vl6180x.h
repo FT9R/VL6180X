@@ -26,6 +26,7 @@ typedef enum {
 typedef enum {
     VL6180X_ERR_NONE,
     VL6180X_ERR_ARG,
+    VL6180X_ERR_PLATFORM,
     VL6180X_ERR_ID,
     VL6180X_ERR_STATE,
     VL6180X_ERR_I2C_READ,
