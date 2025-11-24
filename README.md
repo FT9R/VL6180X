@@ -8,13 +8,13 @@ This driver based on [`Pololu's VL6180X library for Arduino`](https://github.com
 ## Features
 
 - Platform-independent
+- No external library dependencies, except for standard C
+- Device ID validation  
+- Hardware reset support  
 - A few devices on the same and different I2C bus support with separated handles
 - Polling, Interrupt and Asynchronous modes support
-- Hardware reset support  
-- Device ID validation  
 - Timeouts for blocking operations  
-- Range scaling (1x–3x)  
-- No external library dependencies, except for standard C
+- Ability to change range scaling (1x–2x-3x) and part to part offset
 
 ## Usage
 - Assign your platform-specific functions:
