@@ -96,12 +96,13 @@ void vl6180x_SetAddress(vl6180x_t *dev, uint8_t newAddr);
 void vl6180x_ConfigureDefault(vl6180x_t *dev);
 
 /**
- * @brief Set range scaling factor. The sensor uses 1x scaling by default, giving range measurements in units of mm.
-Increasing the scaling to 2x or 3x makes it give raw values in units of 2 mm or 3 mm instead. In other words, a bigger
-scaling factor increases the sensor's potential maximum range but reduces its resolution
+ * @brief Set new range scaling factor and offset
  * @param dev device handle
  * @param new_scaling new scaling factor (1, 2, or 3)
  * @param new_offset new part-to-part range offset in mm. Provide `dev.ptp_offset` to keep existing offset
+ * @note The sensor uses 1x scaling by default, giving range measurements in units of mm.
+Increasing the scaling to 2x or 3x makes it give raw values in units of 2 mm or 3 mm instead. In other words, a bigger
+scaling factor increases the sensor's potential maximum range but reduces its resolution
  */
 void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newOffset);
 
@@ -136,7 +137,7 @@ void vl6180x_StartInterleavedContinuous(vl6180x_t *dev, uint16_t period);
 
 /**
  * @brief Stop continuous measurements
- * @param dev device handle.
+ * @param dev device handle
  * @note This will actually start a single measurement of range and/or ambient light if continuous mode is not active,
  * so it's a good idea to wait a few hundred ms after calling this function to let that complete before starting
  * continuous mode again or taking a reading
