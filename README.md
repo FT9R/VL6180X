@@ -123,8 +123,10 @@ void Task_AsyncInt(void)
 
     while (1)
     {
+        uint16_t range;
+
         if (IsIntPinLow())
-            uint16_t range = vl6180x_ReadRangeAsync(&tof);
+            range = vl6180x_ReadRangeAsync(&tof);
     }
 }
 ```
