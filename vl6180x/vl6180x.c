@@ -496,7 +496,10 @@ uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev)
 
         dev->interface.delay(1);
         if (--timeout == 0)
+        {
+            dev->error = VL6180X_ERR_TIMEOUT;
             goto error;
+        }
     }
 
     READ_REG(RESULT__RANGE_VAL, range, 1);
@@ -576,7 +579,10 @@ uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev)
 
         dev->interface.delay(1);
         if (--timeout == 0)
+        {
+            dev->error = VL6180X_ERR_TIMEOUT;
             goto error;
+        }
     }
 
     READ_REG(RESULT__ALS_VAL, ambient, 2);
