@@ -125,6 +125,16 @@ static bool StateUpdate(vl6180x_t *dev, vl6180x_state_t stateCheck, vl6180x_stat
     if (internalFunctionUsage)
         return true;
 
+    /* At async functions entry driver state can be not idle */
+    if (stateCheck == VL6180X_STATE_IDLE)
+    {
+        if ((stateSet == VL6180X_STATE_READ_RANGE_ASYNC) || (stateSet == VL6180X_STATE_READ_AMBIENT_ASYNC))
+        {
+            dev->state = stateSet;
+            return true;
+        }
+    }
+
     /* Actual status check */
     if (dev->state != stateCheck)
     {
