@@ -447,19 +447,33 @@ error:
     return;
 }
 
-void vl6180x_StopContinuous(vl6180x_t *dev)
+void vl6180x_StopRangeContinuous(vl6180x_t *dev)
 {
     if (dev == NULL)
         goto error;
 
-    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_STOP_CONT))
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_STOP_RANGE_CONT))
         goto error;
 
     WRITE_REG(SYSRANGE__START, 0x01, 1);
-    WRITE_REG(SYSALS__START, 0x01, 1);
-    WRITE_REG(INTERLEAVED_MODE__ENABLE, 0, 1);
 
-    StateUpdate(dev, VL6180X_STATE_STOP_CONT, VL6180X_STATE_IDLE);
+    StateUpdate(dev, VL6180X_STATE_STOP_RANGE_CONT, VL6180X_STATE_IDLE);
+
+error:
+    return;
+}
+
+void vl6180x_StopAmbientContinuous(vl6180x_t *dev)
+{
+    if (dev == NULL)
+        goto error;
+
+    if (!StateUpdate(dev, VL6180X_STATE_IDLE, VL6180X_STATE_STOP_AMBIENT_CONT))
+        goto error;
+
+    WRITE_REG(SYSALS__START, 0x01, 1);
+
+    StateUpdate(dev, VL6180X_STATE_STOP_AMBIENT_CONT, VL6180X_STATE_IDLE);
 
 error:
     return;

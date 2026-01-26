@@ -13,7 +13,8 @@ typedef enum {
     VL6180X_STATE_START_RANGE_CONT,
     VL6180X_STATE_START_AMBIENT_CONT,
     VL6180X_STATE_START_INTER_CONT,
-    VL6180X_STATE_STOP_CONT,
+    VL6180X_STATE_STOP_RANGE_CONT,
+    VL6180X_STATE_STOP_AMBIENT_CONT,
     VL6180X_STATE_READ_RANGE,
     VL6180X_STATE_READ_RANGE_CONT,
     VL6180X_STATE_READ_RANGE_ASYNC,
@@ -138,13 +139,22 @@ void vl6180x_StartAmbientContinuous(vl6180x_t *dev, uint16_t period);
 void vl6180x_StartInterleavedContinuous(vl6180x_t *dev, uint16_t period);
 
 /**
- * @brief Stop continuous measurements
+ * @brief Stop continuous range measurements
  * @param dev device handle
- * @note This will actually start a single measurement of range and/or ambient light if continuous mode is not active,
+ * @note This will actually start a single measurement of range,
  * so it's a good idea to wait a few hundred ms after calling this function to let that complete before starting
  * continuous mode again or taking a reading
  */
-void vl6180x_StopContinuous(vl6180x_t *dev);
+void vl6180x_StopRangeContinuous(vl6180x_t *dev);
+
+/**
+ * @brief Stop continuous ambient light measurements
+ * @param dev device handle
+ * @note This will actually start a single measurement of ambient light,
+ * so it's a good idea to wait a few hundred ms after calling this function to let that complete before starting
+ * continuous mode again or taking a reading
+ */
+void vl6180x_StopAmbientContinuous(vl6180x_t *dev);
 
 /**
  * @brief Performs a single-shot ranging measurement
