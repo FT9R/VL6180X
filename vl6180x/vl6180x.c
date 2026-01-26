@@ -17,17 +17,22 @@
         }                                                                                                 \
     }                                                                                                     \
     while (0)
+static uint8_t writeBuf[4];
 
-#define WRITE_REG(REG, DATA, SIZE)                                                                          \
-    do                                                                                                      \
-    {                                                                                                       \
-        if (!dev->interface.write(dev->interface.handle, dev->address, (REG), (uint8_t[]) {(DATA)}, (SIZE), \
-                                  I2C_WRITE_TIMEOUT))                                                       \
-        {                                                                                                   \
-            dev->error = VL6180X_ERR_I2C_WRITE;                                                             \
-            goto error;                                                                                     \
-        }                                                                                                   \
-    }                                                                                                       \
+#define WRITE_REG(REG, DATA, SIZE)                                                                           \
+    do                                                                                                       \
+    {                                                                                                        \
+        writeBuf[0] = (uint8_t) ((DATA) >> 24);                                                              \
+        writeBuf[1] = (uint8_t) ((DATA) >> 16);                                                              \
+        writeBuf[2] = (uint8_t) ((DATA) >> 8);                                                               \
+        writeBuf[3] = (uint8_t) (DATA);                                                                      \
+        if (!dev->interface.write(dev->interface.handle, dev->address, (REG), &writeBuf[4 - (SIZE)], (SIZE), \
+                                  I2C_WRITE_TIMEOUT))                                                        \
+        {                                                                                                    \
+            dev->error = VL6180X_ERR_I2C_WRITE;                                                              \
+            goto error;                                                                                      \
+        }                                                                                                    \
+    }                                                                                                        \
     while (0)
 
 /* Custom types */
@@ -200,7 +205,6 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
     {
         dev->scaling = 1;
 
-        WRITE_REG(0x207, 0x01, 1);
         WRITE_REG(0x207, 0x01, 1);
         WRITE_REG(0x208, 0x01, 1);
         WRITE_REG(0x096, 0x00, 1);
