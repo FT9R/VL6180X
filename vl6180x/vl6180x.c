@@ -156,7 +156,7 @@ static bool StateUpdate(vl6180x_t *dev, vl6180x_state_t stateCheck, vl6180x_stat
 void vl6180x_Init(vl6180x_t *dev, bool reset)
 {
     uint8_t id = 0;
-    uint8_t responseAttmept = 0;
+    uint8_t responseAttempt = 0;
     uint8_t freshOut = 1;
     uint16_t s = 0;
 
@@ -190,7 +190,7 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
         if (id == DEVICE_ID)
             break;
 
-        if (++responseAttmept >= 5)
+        if (++responseAttempt >= 5)
         {
             dev->error = VL6180X_ERR_ID;
             goto error;
