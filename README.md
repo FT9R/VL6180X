@@ -57,8 +57,8 @@ void Task_SingleShot(void)
 
     while (1)
     {
-        uint16_t range = vl6180x_ReadRangeSingle(&tof);
         uint16_t ambient = vl6180x_ReadAmbientSingle(&tof);
+        uint16_t range = vl6180x_ReadRangeSingle(&tof);
     }
 }
 ```
@@ -84,7 +84,7 @@ void Task_Interleaved(void)
 {
     vl6180x_t tof;
     vl6180x_SetUp(&tof);
-    vl6180x_StartInterleavedContinuous(&tof, 100);
+    vl6180x_StartInterleavedContinuous(&tof, 200);
 
     while (1)
     {
@@ -103,9 +103,8 @@ void Task_AsyncPoll(void)
 
     while (1)
     {
-        uint16_t range = vl6180x_ReadRangeAsync(&tof); // UINT16_MAX if not ready
-
-        if (range != UINT16_MAX)
+        uint16_t range = vl6180x_ReadRangeAsync(&tof); // Returns `VL6180X_NO_READINGS` if result is not ready
+        if (range != VL6180X_NO_READINGS)
         {
             // Use range result
         }
@@ -124,7 +123,6 @@ void Task_AsyncInt(void)
     while (1)
     {
         uint16_t range;
-
         if (IsIntPinLow())
             range = vl6180x_ReadRangeAsync(&tof);
     }
