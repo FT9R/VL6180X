@@ -6,33 +6,42 @@
 #define I2C_WRITE_TIMEOUT 1000
 
 /* Macro */
-#define READ_REG(REG, DATA, SIZE)                                                                         \
-    do                                                                                                    \
-    {                                                                                                     \
-        if (!dev->interface.read(dev->interface.handle, dev->address, (REG), (uint8_t *) &(DATA), (SIZE), \
-                                 I2C_READ_TIMEOUT))                                                       \
-        {                                                                                                 \
-            dev->error = VL6180X_ERR_I2C_READ;                                                            \
-            goto error;                                                                                   \
-        }                                                                                                 \
-    }                                                                                                     \
+#define READ_REG(REG, DATA, SIZE, ...)                                                                            \
+    do                                                                                                            \
+    {                                                                                                             \
+        if (!dev->interface.read(dev->interface.handle, dev->address, (uint16_t) (REG), (DATA), (uint8_t) (SIZE), \
+                                 I2C_READ_TIMEOUT))                                                               \
+            ERROR_SET(VL6180X_ERR_I2C_READ, __VA_ARGS__);                                                         \
+    }                                                                                                             \
     while (0)
-static uint8_t writeBuf[4];
 
-#define WRITE_REG(REG, DATA, SIZE)                                                                           \
-    do                                                                                                       \
-    {                                                                                                        \
-        writeBuf[0] = (uint8_t) ((DATA) >> 24);                                                              \
-        writeBuf[1] = (uint8_t) ((DATA) >> 16);                                                              \
-        writeBuf[2] = (uint8_t) ((DATA) >> 8);                                                               \
-        writeBuf[3] = (uint8_t) (DATA);                                                                      \
-        if (!dev->interface.write(dev->interface.handle, dev->address, (REG), &writeBuf[4 - (SIZE)], (SIZE), \
-                                  I2C_WRITE_TIMEOUT))                                                        \
-        {                                                                                                    \
-            dev->error = VL6180X_ERR_I2C_WRITE;                                                              \
-            goto error;                                                                                      \
-        }                                                                                                    \
-    }                                                                                                        \
+#define WRITE_REG(REG, DATA, SIZE, ...)                                                                          \
+    do                                                                                                           \
+    {                                                                                                            \
+        uint8_t _writeBuf[4];                                                                                    \
+        uint8_t _size = (uint8_t) (SIZE);                                                                        \
+        uint32_t _data = (uint32_t) (DATA);                                                                      \
+        if ((_size == 0u) || (_size > 4u))                                                                       \
+            ERROR_SET(VL6180X_ERR_INTERNAL, __VA_ARGS__);                                                        \
+        _writeBuf[0] = (uint8_t) (_data >> 24);                                                                  \
+        _writeBuf[1] = (uint8_t) (_data >> 16);                                                                  \
+        _writeBuf[2] = (uint8_t) (_data >> 8);                                                                   \
+        _writeBuf[3] = (uint8_t) (_data);                                                                        \
+        if (!dev->interface.write(dev->interface.handle, dev->address, (uint16_t) (REG), &_writeBuf[4u - _size], \
+                                  _size, I2C_WRITE_TIMEOUT))                                                     \
+            ERROR_SET(VL6180X_ERR_I2C_WRITE, __VA_ARGS__);                                                       \
+    }                                                                                                            \
+    while (0)
+
+#define ERROR_SET(ERR, ...)                           \
+    do                                                \
+    {                                                 \
+        vl6180x_error_t err = (ERR);                  \
+        dev->error |= err;                            \
+        if (dev->callbacks.error != NULL)             \
+            dev->callbacks.error(dev, err, __func__); \
+        return __VA_ARGS__;                           \
+    }                                                 \
     while (0)
 
 /* Custom types */
@@ -118,21 +127,18 @@ static inline int32_t Constrain(int32_t x, int32_t lo, int32_t hi)
 
 void vl6180x_Init(vl6180x_t *dev, bool reset)
 {
-    uint8_t id = 0;
+    uint8_t id;
+    uint8_t freshOut;
+    uint16_t s;
     uint8_t responseAttempt = 0;
-    uint8_t freshOut = 1;
-    uint16_t s = 0;
 
     if (dev == NULL)
-        goto error;
+        return;
 
     /* Check platform */
     if (dev->interface.read == NULL || dev->interface.write == NULL || dev->interface.ce == NULL ||
         dev->interface.delay == NULL)
-    {
-        dev->error = VL6180X_ERR_PLATFORM;
-        goto error;
-    }
+        ERROR_SET(VL6180X_ERR_PLATFORM);
 
     dev->address = (dev->address == 0) ? DEVICE_ADDRESS : dev->address;
     dev->error = VL6180X_ERR_NONE;
@@ -148,21 +154,18 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
     while (true)
     {
         dev->interface.delay(100);
-        READ_REG(IDENTIFICATION__MODEL_ID, id, 1);
+        READ_REG(IDENTIFICATION__MODEL_ID, &id, 1);
         if (id == DEVICE_ID)
             break;
 
         if (++responseAttempt >= 5)
-        {
-            dev->error = VL6180X_ERR_ID;
-            goto error;
-        }
+            ERROR_SET(VL6180X_ERR_ID);
     }
 
     // Store part-to-part range offset so it can be adjusted if scaling is changed
-    READ_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, dev->ptp_offset, 1);
+    READ_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, (uint8_t *) &dev->ptp_offset, 1);
 
-    READ_REG(SYSTEM__FRESH_OUT_OF_RESET, freshOut, 1);
+    READ_REG(SYSTEM__FRESH_OUT_OF_RESET, &freshOut, 1);
     if (freshOut == 1)
     {
         dev->scaling = 1;
@@ -204,7 +207,7 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
     {
         // Sensor has already been initialized, so try to get scaling settings by
         // reading registers.
-        READ_REG(RANGE_SCALER, s, 2);
+        READ_REG(RANGE_SCALER, (uint8_t *) &s, 2);
 
         if (s == ScalerValues[3])
             dev->scaling = 3;
@@ -219,27 +222,21 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
         // be resolved by resetting the sensor and Arduino again.
         dev->ptp_offset *= dev->scaling;
     }
-
-error:
-    return;
 }
 
 void vl6180x_SetAddress(vl6180x_t *dev, uint8_t newAddr)
 {
     if (dev == NULL)
-        goto error;
+        return;
 
     WRITE_REG(I2C_SLAVE__DEVICE_ADDRESS, newAddr & 0x7F, 1);
     dev->address = newAddr;
-
-error:
-    return;
 }
 
 void vl6180x_ConfigureDefault(vl6180x_t *dev)
 {
     if (dev == NULL)
-        goto error;
+        return;
 
     // "Recommended : Public registers"
 
@@ -284,31 +281,25 @@ void vl6180x_ConfigureDefault(vl6180x_t *dev)
 
     // reset range scaling factor to 1x
     vl6180x_SetScalingAndOffset(dev, 1, dev->ptp_offset);
-
-error:
-    return;
 }
 
 void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newOffset)
 {
     uint8_t const DefaultCrosstalkValidHeight = 20; // default value of SYSRANGE__CROSSTALK_VALID_HEIGHT
-    uint8_t rce = 0;
+    uint8_t rce;
 
     if (dev == NULL)
-        goto error;
+        return;
 
     if ((newScaling < 1) || (newScaling > 3))
-    {
-        dev->error = VL6180X_ERR_ARG;
-        goto error;
-    }
+        ERROR_SET(VL6180X_ERR_ARG);
 
+    WRITE_REG(RANGE_SCALER, ScalerValues[newScaling], 2);
     dev->scaling = newScaling;
-    WRITE_REG(RANGE_SCALER, ScalerValues[dev->scaling], 2);
 
     // apply scaling on part-to-part offset
+    WRITE_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, newOffset / dev->scaling, 1);
     dev->ptp_offset = newOffset;
-    WRITE_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, dev->ptp_offset / dev->scaling, 1);
 
     // apply scaling on CrossTalkValidHeight
     WRITE_REG(SYSRANGE__CROSSTALK_VALID_HEIGHT, DefaultCrosstalkValidHeight / dev->scaling, 1);
@@ -316,11 +307,8 @@ void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newO
     // This function does not apply scaling to RANGE_IGNORE_VALID_HEIGHT.
 
     // enable early convergence estimate only at 1x scaling
-    READ_REG(SYSRANGE__RANGE_CHECK_ENABLES, rce, 1);
+    READ_REG(SYSRANGE__RANGE_CHECK_ENABLES, &rce, 1);
     WRITE_REG(SYSRANGE__RANGE_CHECK_ENABLES, (rce & 0xFE) | (dev->scaling == 1), 1);
-
-error:
-    return;
 }
 
 void vl6180x_StartRangeContinuous(vl6180x_t *dev, uint16_t period)
@@ -328,16 +316,13 @@ void vl6180x_StartRangeContinuous(vl6180x_t *dev, uint16_t period)
     int32_t period_reg;
 
     if (dev == NULL)
-        goto error;
+        return;
 
     period_reg = (int32_t) (period / 10) - 1;
     period_reg = Constrain(period_reg, 0, 254);
 
     WRITE_REG(SYSRANGE__INTERMEASUREMENT_PERIOD, period_reg, 1);
     WRITE_REG(SYSRANGE__START, 0x03, 1);
-
-error:
-    return;
 }
 
 void vl6180x_StartAmbientContinuous(vl6180x_t *dev, uint16_t period)
@@ -345,16 +330,13 @@ void vl6180x_StartAmbientContinuous(vl6180x_t *dev, uint16_t period)
     int32_t period_reg;
 
     if (dev == NULL)
-        goto error;
+        return;
 
     period_reg = (int32_t) (period / 10) - 1;
     period_reg = Constrain(period_reg, 0, 254);
 
     WRITE_REG(SYSALS__INTERMEASUREMENT_PERIOD, period_reg, 1);
     WRITE_REG(SYSALS__START, 0x03, 1);
-
-error:
-    return;
 }
 
 void vl6180x_StartInterleavedContinuous(vl6180x_t *dev, uint16_t period)
@@ -362,7 +344,7 @@ void vl6180x_StartInterleavedContinuous(vl6180x_t *dev, uint16_t period)
     int32_t period_reg;
 
     if (dev == NULL)
-        goto error;
+        return;
 
     period_reg = (int32_t) (period / 10) - 1;
     period_reg = Constrain(period_reg, 0, 254);
@@ -370,175 +352,139 @@ void vl6180x_StartInterleavedContinuous(vl6180x_t *dev, uint16_t period)
     WRITE_REG(INTERLEAVED_MODE__ENABLE, 1, 1);
     WRITE_REG(SYSALS__INTERMEASUREMENT_PERIOD, period_reg, 1);
     WRITE_REG(SYSALS__START, 0x03, 1);
-
-error:
-    return;
 }
 
 void vl6180x_StopRangeContinuous(vl6180x_t *dev)
 {
     if (dev == NULL)
-        goto error;
+        return;
 
     WRITE_REG(SYSRANGE__START, 0x01, 1);
-
-error:
-    return;
 }
 
 void vl6180x_StopAmbientContinuous(vl6180x_t *dev)
 {
     if (dev == NULL)
-        goto error;
+        return;
 
     WRITE_REG(SYSALS__START, 0x01, 1);
-
-error:
-    return;
 }
 
 uint16_t vl6180x_ReadRangeSingle(vl6180x_t *dev)
 {
-    uint8_t range = UINT8_MAX;
-
     if (dev == NULL)
-        goto error;
+        return VL6180X_NO_READINGS;
 
-    WRITE_REG(SYSRANGE__START, 0x01, 1);
-    range = vl6180x_ReadRangeContinuous(dev);
-    range /= dev->scaling; // ReadRangeContinuous() call scales the result by default
-
-error:
-    return (range == UINT8_MAX) ? UINT16_MAX : (uint16_t) dev->scaling * range;
+    WRITE_REG(SYSRANGE__START, 0x01, 1, VL6180X_NO_READINGS);
+    return vl6180x_ReadRangeContinuous(dev);
 }
 
 uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev)
 {
+    uint8_t range;
     uint32_t timeout;
-    uint8_t range = UINT8_MAX;
-    uint8_t interruptStatus = 0;
+    uint8_t interruptStatus;
 
     if (dev == NULL)
-        goto error;
+        return VL6180X_NO_READINGS;
 
     // While computation is not finished
     // only watching if bits 2:0 (mask 0x07) are set to 0b100 (0x04)
     timeout = dev->sampleReadyTimeout > 0 ? dev->sampleReadyTimeout : 1;
     while (true)
     {
-        READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
+        READ_REG(RESULT__INTERRUPT_STATUS_GPIO, &interruptStatus, 1, VL6180X_NO_READINGS);
         if ((interruptStatus & 0x07) == 0x04)
             break;
 
         dev->interface.delay(1);
         if (--timeout == 0)
-        {
-            dev->error = VL6180X_ERR_TIMEOUT;
-            goto error;
-        }
+            ERROR_SET(VL6180X_ERR_TIMEOUT, VL6180X_NO_READINGS);
     }
 
-    READ_REG(RESULT__RANGE_VAL, range, 1);
-    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1);
-
-error:
-    return (range == UINT8_MAX) ? UINT16_MAX : (uint16_t) dev->scaling * range;
+    READ_REG(RESULT__RANGE_VAL, &range, 1, VL6180X_NO_READINGS);
+    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1, VL6180X_NO_READINGS);
+    return range == UINT8_MAX ? VL6180X_NO_READINGS : (uint16_t) dev->scaling * range;
 }
 
 uint16_t vl6180x_ReadRangeAsync(vl6180x_t *dev)
 {
-    uint8_t range = UINT8_MAX;
-    uint8_t interruptStatus = 0;
+    uint8_t range;
+    uint8_t interruptStatus;
 
     if (dev == NULL)
-        goto error;
+        return VL6180X_NO_READINGS;
 
-    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
+    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, &interruptStatus, 1, VL6180X_NO_READINGS);
     if ((interruptStatus & 0x07) != 0x04)
-        goto error; // Sample not ready yet
+        return VL6180X_NO_READINGS; // Sample not ready yet
 
-    READ_REG(RESULT__RANGE_VAL, range, 1);
-    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1);
-
-error:
-    return (range == UINT8_MAX) ? UINT16_MAX : (uint16_t) dev->scaling * range;
+    READ_REG(RESULT__RANGE_VAL, &range, 1, VL6180X_NO_READINGS);
+    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1, VL6180X_NO_READINGS);
+    return range == UINT8_MAX ? VL6180X_NO_READINGS : (uint16_t) dev->scaling * range;
 }
 
 uint16_t vl6180x_ReadAmbientSingle(vl6180x_t *dev)
 {
-    uint16_t ambient = 0;
-
     if (dev == NULL)
-        goto error;
+        return VL6180X_NO_READINGS;
 
-    WRITE_REG(SYSALS__START, 0x01, 1);
-    ambient = vl6180x_ReadAmbientContinuous(dev);
-
-error:
-    return ambient;
+    WRITE_REG(SYSALS__START, 0x01, 1, VL6180X_NO_READINGS);
+    return vl6180x_ReadAmbientContinuous(dev);
 }
 
 uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev)
 {
+    uint16_t ambient;
     uint32_t timeout;
-    uint16_t ambient = 0;
-    uint8_t interruptStatus = 0;
+    uint8_t interruptStatus;
 
     if (dev == NULL)
-        goto error;
+        return VL6180X_NO_READINGS;
 
     // While computation is not finished
     // only watching if bits 5:3 (mask 0x38) are set to 0b100 (0x20)
     timeout = dev->sampleReadyTimeout > 0 ? dev->sampleReadyTimeout : 1;
     while (true)
     {
-        READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
+        READ_REG(RESULT__INTERRUPT_STATUS_GPIO, &interruptStatus, 1, VL6180X_NO_READINGS);
         if ((interruptStatus & 0x38) == 0x20)
             break;
 
         dev->interface.delay(1);
         if (--timeout == 0)
-        {
-            dev->error = VL6180X_ERR_TIMEOUT;
-            goto error;
-        }
+            ERROR_SET(VL6180X_ERR_TIMEOUT, VL6180X_NO_READINGS);
     }
 
-    READ_REG(RESULT__ALS_VAL, ambient, 2);
-    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x02, 1);
-
-error:
-    return ambient;
+    READ_REG(RESULT__ALS_VAL, (uint8_t *) &ambient, 2, VL6180X_NO_READINGS);
+    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x02, 1, VL6180X_NO_READINGS);
+    return ambient == UINT16_MAX ? ambient - 1 : ambient;
 }
 
 uint16_t vl6180x_ReadAmbientAsync(vl6180x_t *dev)
 {
-    uint16_t ambient = 0;
-    uint8_t interruptStatus = 0;
+    uint16_t ambient;
+    uint8_t interruptStatus;
 
     if (dev == NULL)
-        goto error;
+        return VL6180X_NO_READINGS;
 
-    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, interruptStatus, 1);
+    READ_REG(RESULT__INTERRUPT_STATUS_GPIO, &interruptStatus, 1, VL6180X_NO_READINGS);
     if ((interruptStatus & 0x38) != 0x20)
-        goto error; // Sample not ready yet
+        return VL6180X_NO_READINGS; // Sample not ready yet
 
-    READ_REG(RESULT__ALS_VAL, ambient, 2);
-    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x02, 1);
-
-error:
-    return ambient;
+    READ_REG(RESULT__ALS_VAL, (uint8_t *) &ambient, 2, VL6180X_NO_READINGS);
+    WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x02, 1, VL6180X_NO_READINGS);
+    return ambient == UINT16_MAX ? ambient - 1 : ambient;
 }
 
 vl6180x_range_error_t vl6180x_ReadRangeStatus(vl6180x_t *dev)
 {
-    vl6180x_range_error_t rangeStatus = VL6180X_RANGE_ERROR_DRIVER;
+    vl6180x_range_error_t rangeStatus;
 
     if (dev == NULL)
-        goto error;
+        return VL6180X_RANGE_ERROR_DRIVER;
 
-    READ_REG(RESULT__RANGE_STATUS, rangeStatus, 1);
-
-error:
-    return rangeStatus == VL6180X_RANGE_ERROR_DRIVER ? rangeStatus : (vl6180x_range_error_t) (rangeStatus >> 4);
+    READ_REG(RESULT__RANGE_STATUS, (uint8_t *) &rangeStatus, 1, VL6180X_RANGE_ERROR_DRIVER);
+    return (vl6180x_range_error_t) (rangeStatus >> 4);
 }

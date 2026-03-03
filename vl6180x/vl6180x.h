@@ -7,14 +7,15 @@
 #define VL6180X_NO_READINGS UINT16_MAX
 
 typedef enum {
-    VL6180X_ERR_NONE,
-    VL6180X_ERR_ARG,
-    VL6180X_ERR_PLATFORM,
-    VL6180X_ERR_ID,
-    VL6180X_ERR_STATE,
-    VL6180X_ERR_TIMEOUT,
-    VL6180X_ERR_I2C_READ,
-    VL6180X_ERR_I2C_WRITE
+    VL6180X_ERR_NONE = 0,
+    VL6180X_ERR_ARG = 1 << 0,
+    VL6180X_ERR_PLATFORM = 1 << 1,
+    VL6180X_ERR_ID = 1 << 2,
+    VL6180X_ERR_STATE = 1 << 3,
+    VL6180X_ERR_TIMEOUT = 1 << 4,
+    VL6180X_ERR_I2C_READ = 1 << 5,
+    VL6180X_ERR_I2C_WRITE = 1 << 6,
+    VL6180X_ERR_INTERNAL = 1 << 7
 } vl6180x_error_t;
 
 typedef enum {
@@ -37,18 +38,23 @@ typedef enum {
 
 typedef struct vl6180x_s {
     struct {
-        uint8_t (*read)(void *handle, uint16_t address, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
-        uint8_t (*write)(void *handle, uint16_t address, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
+        bool (*read)(void *handle, uint16_t address, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
+        bool (*write)(void *handle, uint16_t address, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
         void (*ce)(uint8_t level); // Chip enable (gpio0), open drain - no pull - active high
         void (*delay)(uint32_t ms);
         void *handle; // Optional user-defined handle for I2C interface
     } interface;
 
+    struct {
+        void (*error)(struct vl6180x_s *dev, vl6180x_error_t error,
+                      const char *funcName); // Optional error callback, to be invoked on any driver error occurrence
+    } callbacks;
+
     uint8_t address; // Device address. Provide before initialization if different from default
     uint8_t scaling; // Range scaling factor (1x, 2x, or 3x)
     int8_t ptp_offset; // Part to part range offset
     uint32_t sampleReadyTimeout; // Timeout for continuous range/ambient readings
-    vl6180x_error_t error; // Driver error code
+    vl6180x_error_t error; // Accumulated driver errors
 } vl6180x_t;
 
 #ifdef __cplusplus
@@ -140,7 +146,7 @@ void vl6180x_StopAmbientContinuous(vl6180x_t *dev);
 /**
  * @brief Performs a single-shot ranging measurement
  * @param dev device handle
- * @return measured range in millimeters or `UINT16_MAX` in case of error/object absence
+ * @return Measured range in millimeters or `VL6180X_NO_READINGS` in case of error/object absence
  * @note This function automatically scales the result according to the current scaling factor
  */
 uint16_t vl6180x_ReadRangeSingle(vl6180x_t *dev);
@@ -148,15 +154,16 @@ uint16_t vl6180x_ReadRangeSingle(vl6180x_t *dev);
 /**
  * @brief Returns a range reading when continuous mode is activated
  * @param dev device handle
- * @return measured range in millimeters or `UINT16_MAX` in case of error/object absence
+ * @return Measured range in millimeters or `VL6180X_NO_READINGS` in case of error/object absence
  * @note This function automatically scales the result according to the current scaling factor
  */
 uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev);
 
 /**
- * @brief Immediately reads range result if available, otherwise returns `UINT16_MAX`
+ * @brief Immediately reads range result if available, otherwise returns `VL6180X_NO_READINGS`
  * @param dev device handle
- * @return measured range in millimeters or `UINT16_MAX` if result is not ready or in case of error/object absence
+ * @return Measured range in millimeters or `VL6180X_NO_READINGS` if result is not ready or in case of error/object
+ * absence
  * @note This function automatically scales the result according to the current scaling factor.
  * @note Interrupt pin (gpio1) can be checked before calling this function to avoid unnecessary I2C traffic
  */
@@ -165,21 +172,21 @@ uint16_t vl6180x_ReadRangeAsync(vl6180x_t *dev);
 /**
  * @brief Performs a single-shot ambient light measurement
  * @param dev device handle
- * @return measured ambient light level or `0` in case of error
+ * @return Measured ambient light level or `VL6180X_NO_READINGS` in case of error
  */
 uint16_t vl6180x_ReadAmbientSingle(vl6180x_t *dev);
 
 /**
  * @brief Returns an ambient light reading when continuous mode is activated
  * @param dev device handle
- * @return measured ambient light level or `0` in case of error
+ * @return Measured ambient light level or `VL6180X_NO_READINGS` in case of error
  */
 uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev);
 
 /**
- * @brief Immediately reads ambient light result if available, otherwise returns `0`
+ * @brief Immediately reads ambient light result if available, otherwise returns `VL6180X_NO_READINGS`
  * @param dev device handle
- * @return measured ambient light level or `0` if result is not ready or in case of error
+ * @return Measured ambient light level or `VL6180X_NO_READINGS` if result is not ready or in case of error
  * @note Interrupt pin (gpio1) can be checked before calling this function to avoid unnecessary I2C traffic
  */
 uint16_t vl6180x_ReadAmbientAsync(vl6180x_t *dev);
@@ -187,7 +194,7 @@ uint16_t vl6180x_ReadAmbientAsync(vl6180x_t *dev);
 /**
  * @brief Get ranging success/error status code (Use it before using a measurement)
  * @param dev device handle
- * @return error code - one of possible `VL6180X_RANGE_ERROR_*` values
+ * @return Error code - one of possible `VL6180X_RANGE_ERROR_*` values
  * or `VL6180X_RANGE_ERROR_DRIVER` in case of driver error
  */
 vl6180x_range_error_t vl6180x_ReadRangeStatus(vl6180x_t *dev);

@@ -42,7 +42,7 @@
 // #define VL6180X_CONTINUOUS
 // #define VL6180X_INTERLEAVED
 #define VL6180X_ASYNC
-#define VL6180X_USE_INTERRUPT
+#define VL6180X_USE_INTERRUPT // Can be used with `VL6180X_ASYNC`
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -175,13 +175,11 @@ void TofTask(void *argument)
 {
     /* USER CODE BEGIN TofTask */
     static vl6180x_t tof;
-    static float _range;
-    static float range;
-    static float _ambient;
-    static float ambient;
+    static float rangeFiltered = 120;
+    static float ambientFiltered = 0;
     const float alphaRange = 0.3f;
     const float alphaAmbient = 0.2f;
-    static char txBuffer[64];
+    const uint16_t APPLICATION_RANGE_LIMIT = 120;
 
     vl6180x_SetUp(&tof);
 #ifdef VL6180X_SINGLE_SHOT
@@ -191,7 +189,7 @@ void TofTask(void *argument)
     /* Choose only one: ambient or range */
     vl6180x_StartRangeContinuous(&tof, 100);
 #elif defined(VL6180X_INTERLEAVED)
-    vl6180x_StartInterleavedContinuous(&tof, 100);
+    vl6180x_StartInterleavedContinuous(&tof, 200);
 #elif defined(VL6180X_ASYNC)
     /* Choose only one: ambient or range */
     vl6180x_StartRangeContinuous(&tof, 500);
@@ -200,27 +198,27 @@ void TofTask(void *argument)
     for (;;)
     {
 #ifdef VL6180X_SINGLE_SHOT
-        ambient = alphaAmbient * vl6180x_ReadAmbientSingle(&tof) + (1 - alphaAmbient) * ambient;
-        range = alphaRange * vl6180x_ReadRangeSingle(&tof) + (1 - alphaRange) * range;
+        ambientFiltered = alphaAmbient * vl6180x_ReadAmbientSingle(&tof) + (1 - alphaAmbient) * ambientFiltered;
+        rangeFiltered = alphaRange * vl6180x_ReadRangeSingle(&tof) + (1 - alphaRange) * rangeFiltered;
 #elif defined(VL6180X_CONTINUOUS)
-        range = alphaRange * vl6180x_ReadRangeContinuous(&tof) + (1 - alphaRange) * range;
+        rangeFiltered = alphaRange * vl6180x_ReadRangeContinuous(&tof) + (1 - alphaRange) * rangeFiltered;
 #elif defined(VL6180X_INTERLEAVED)
-        ambient = alphaAmbient * vl6180x_ReadAmbientContinuous(&tof) + (1 - alphaAmbient) * ambient;
-        range = alphaRange * vl6180x_ReadRangeContinuous(&tof) + (1 - alphaRange) * range;
+        ambientFiltered = alphaAmbient * vl6180x_ReadAmbientContinuous(&tof) + (1 - alphaAmbient) * ambientFiltered;
+        rangeFiltered = alphaRange * vl6180x_ReadRangeContinuous(&tof) + (1 - alphaRange) * rangeFiltered;
 #elif defined(VL6180X_ASYNC)
 #ifdef VL6180X_USE_INTERRUPT
         if (VL6180X_GET_INT == GPIO_PIN_RESET) // Active low
 #endif
         {
-            _range = vl6180x_ReadRangeAsync(&tof); // Returns UINT16_MAX if result is not ready
-            if (_range != UINT16_MAX)
-                range = alphaRange * _range + (1 - alphaRange) * range;
+            uint16_t range = vl6180x_ReadRangeAsync(&tof); // Returns `VL6180X_NO_READINGS` if result is not ready
+            if (range == VL6180X_NO_READINGS)
+                range = APPLICATION_RANGE_LIMIT;
+            rangeFiltered = alphaRange * range + (1 - alphaRange) * rangeFiltered;
         }
 #endif
 
-        osMessageQueuePut(proximityQueueHandle, &range, 0, 10);
-        snprintf(txBuffer, sizeof(txBuffer), "%.2f\r\n", (double) range);
-        HAL_UART_Transmit_DMA(&huart3, (uint8_t *) txBuffer, strlen(txBuffer));
+        osMessageQueuePut(proximityQueueHandle, &rangeFiltered, 0, 10);
+        printf("Range: %.2f mm, ambient: %.2f\n", (double) rangeFiltered, (double) ambientFiltered);
         osDelay(10);
     }
 
