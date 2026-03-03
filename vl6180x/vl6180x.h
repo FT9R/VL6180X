@@ -4,25 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum {
-    VL6180X_STATE_IDLE,
-    VL6180X_STATE_INIT,
-    VL6180X_STATE_SET_ADDR,
-    VL6180X_STATE_CONFIG,
-    VL6180X_STATE_SET_SCALING,
-    VL6180X_STATE_START_RANGE_CONT,
-    VL6180X_STATE_START_AMBIENT_CONT,
-    VL6180X_STATE_START_INTER_CONT,
-    VL6180X_STATE_STOP_RANGE_CONT,
-    VL6180X_STATE_STOP_AMBIENT_CONT,
-    VL6180X_STATE_READ_RANGE,
-    VL6180X_STATE_READ_RANGE_CONT,
-    VL6180X_STATE_READ_RANGE_ASYNC,
-    VL6180X_STATE_READ_AMBIENT,
-    VL6180X_STATE_READ_AMBIENT_CONT,
-    VL6180X_STATE_READ_AMBIENT_ASYNC,
-    VL6180X_STATE_READ_RANGE_STATUS
-} vl6180x_state_t;
+#define VL6180X_NO_READINGS UINT16_MAX
 
 typedef enum {
     VL6180X_ERR_NONE,
@@ -66,7 +48,6 @@ typedef struct vl6180x_s {
     uint8_t scaling; // Range scaling factor (1x, 2x, or 3x)
     int8_t ptp_offset; // Part to part range offset
     uint32_t sampleReadyTimeout; // Timeout for continuous range/ambient readings
-    vl6180x_state_t state; // Driver operation state
     vl6180x_error_t error; // Driver error code
 } vl6180x_t;
 
