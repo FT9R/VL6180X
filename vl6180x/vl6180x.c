@@ -163,12 +163,12 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
     }
 
     // Store part-to-part range offset so it can be adjusted if scaling is changed
-    READ_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, (uint8_t *) &dev->ptp_offset, 1);
+    READ_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, (uint8_t *) &dev->cache.ptp_offset, 1);
 
     READ_REG(SYSTEM__FRESH_OUT_OF_RESET, &freshOut, 1);
     if (freshOut == 1)
     {
-        dev->scaling = 1;
+        dev->cache.scaling = 1;
 
         WRITE_REG(0x207, 0x01, 1);
         WRITE_REG(0x208, 0x01, 1);
@@ -210,17 +210,17 @@ void vl6180x_Init(vl6180x_t *dev, bool reset)
         READ_REG(RANGE_SCALER, (uint8_t *) &s, 2);
 
         if (s == ScalerValues[3])
-            dev->scaling = 3;
+            dev->cache.scaling = 3;
         else if (s == ScalerValues[2])
-            dev->scaling = 2;
+            dev->cache.scaling = 2;
         else
-            dev->scaling = 1;
+            dev->cache.scaling = 1;
 
         // Adjust the part-to-part range offset value read earlier to account for
         // existing scaling. If the sensor was already in 2x or 3x scaling mode,
         // precision will be lost calculating the original (1x) offset, but this can
         // be resolved by resetting the sensor and Arduino again.
-        dev->ptp_offset *= dev->scaling;
+        dev->cache.ptp_offset *= dev->cache.scaling;
     }
 }
 
@@ -280,7 +280,7 @@ void vl6180x_ConfigureDefault(vl6180x_t *dev)
     WRITE_REG(SYSTEM__MODE_GPIO1, 0x10, 1);
 
     // reset range scaling factor to 1x
-    vl6180x_SetScalingAndOffset(dev, 1, dev->ptp_offset);
+    vl6180x_SetScalingAndOffset(dev, 1, dev->cache.ptp_offset);
 }
 
 void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newOffset)
@@ -295,20 +295,20 @@ void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newO
         ERROR_SET(VL6180X_ERR_ARG);
 
     WRITE_REG(RANGE_SCALER, ScalerValues[newScaling], 2);
-    dev->scaling = newScaling;
+    dev->cache.scaling = newScaling;
 
     // apply scaling on part-to-part offset
-    WRITE_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, newOffset / dev->scaling, 1);
-    dev->ptp_offset = newOffset;
+    WRITE_REG(SYSRANGE__PART_TO_PART_RANGE_OFFSET, newOffset / dev->cache.scaling, 1);
+    dev->cache.ptp_offset = newOffset;
 
     // apply scaling on CrossTalkValidHeight
-    WRITE_REG(SYSRANGE__CROSSTALK_VALID_HEIGHT, DefaultCrosstalkValidHeight / dev->scaling, 1);
+    WRITE_REG(SYSRANGE__CROSSTALK_VALID_HEIGHT, DefaultCrosstalkValidHeight / dev->cache.scaling, 1);
 
     // This function does not apply scaling to RANGE_IGNORE_VALID_HEIGHT.
 
     // enable early convergence estimate only at 1x scaling
     READ_REG(SYSRANGE__RANGE_CHECK_ENABLES, &rce, 1);
-    WRITE_REG(SYSRANGE__RANGE_CHECK_ENABLES, (rce & 0xFE) | (dev->scaling == 1), 1);
+    WRITE_REG(SYSRANGE__RANGE_CHECK_ENABLES, (rce & 0xFE) | (dev->cache.scaling == 1), 1);
 }
 
 void vl6180x_StartRangeContinuous(vl6180x_t *dev, uint16_t period)
@@ -404,7 +404,7 @@ uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev)
 
     READ_REG(RESULT__RANGE_VAL, &range, 1, VL6180X_NO_READINGS);
     WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1, VL6180X_NO_READINGS);
-    return range == UINT8_MAX ? VL6180X_NO_READINGS : (uint16_t) dev->scaling * range;
+    return range == UINT8_MAX ? VL6180X_NO_READINGS : (uint16_t) dev->cache.scaling * range;
 }
 
 uint16_t vl6180x_ReadRangeAsync(vl6180x_t *dev)
@@ -421,7 +421,7 @@ uint16_t vl6180x_ReadRangeAsync(vl6180x_t *dev)
 
     READ_REG(RESULT__RANGE_VAL, &range, 1, VL6180X_NO_READINGS);
     WRITE_REG(SYSTEM__INTERRUPT_CLEAR, 0x01, 1, VL6180X_NO_READINGS);
-    return range == UINT8_MAX ? VL6180X_NO_READINGS : (uint16_t) dev->scaling * range;
+    return range == UINT8_MAX ? VL6180X_NO_READINGS : (uint16_t) dev->cache.scaling * range;
 }
 
 uint16_t vl6180x_ReadAmbientSingle(vl6180x_t *dev)

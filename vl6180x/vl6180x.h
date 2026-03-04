@@ -50,9 +50,15 @@ typedef struct vl6180x_s {
                       const char *funcName); // Optional error callback, to be invoked on any driver error occurrence
     } callbacks;
 
+    /* Per-device driver internals - do not modify */
+    struct {
+        uint8_t scaling; // Range scaling factor (1x, 2x, or 3x)
+        int8_t ptp_offset; // Part to part range offset
+        uint32_t identity; // Device handle identity to check if `vl6180x_t` structure can be safely used
+    } cache;
+
+    /* Read/Write safe in the same task context */
     uint8_t address; // Device address. Provide before initialization if different from default
-    uint8_t scaling; // Range scaling factor (1x, 2x, or 3x)
-    int8_t ptp_offset; // Part to part range offset
     uint32_t sampleReadyTimeout; // Timeout for continuous range/ambient readings
     vl6180x_error_t error; // Accumulated driver errors
 } vl6180x_t;
