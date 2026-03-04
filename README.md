@@ -20,11 +20,11 @@ This driver based on [`Pololu's VL6180X library for Arduino`](https://github.com
 - Assign your platform-specific functions:
 
 ```C
-uint8_t (*read)(void *handle, uint16_t addr, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
-uint8_t (*write)(void *handle, uint16_t addr, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
-void (*ce)(uint8_t level); // 0 - pin reset
+bool (*read)(void *handle, uint16_t address, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
+bool (*write)(void *handle, uint16_t address, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
+void (*ce)(uint8_t level); // Chip enable (gpio0), open drain - no pull - active high
 void (*delay)(uint32_t ms);
-void *handle; // Optional, used by platform read/write functions
+void *handle; // Optional user-defined handle for I2C interface
 ```
 
 - Common device setup
