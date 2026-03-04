@@ -177,9 +177,10 @@ void TofTask(void *argument)
     static vl6180x_t tof;
     static float rangeFiltered = 120;
     static float ambientFiltered = 0;
-    const float alphaRange = 0.3f;
-    const float alphaAmbient = 0.2f;
+    const float alphaRange = 0.2f;
+    const float alphaAmbient = 0.15f;
     const uint16_t APPLICATION_RANGE_LIMIT = 120;
+    char plotString[50] = {0};
 
     vl6180x_SetUp(&tof);
 #ifdef VL6180X_SINGLE_SHOT
@@ -211,7 +212,7 @@ void TofTask(void *argument)
 #endif
         {
             uint16_t range = vl6180x_ReadRangeAsync(&tof); // Returns `VL6180X_NO_READINGS` if result is not ready
-            if (range == VL6180X_NO_READINGS)
+            if (range > APPLICATION_RANGE_LIMIT)
                 range = APPLICATION_RANGE_LIMIT;
             rangeFiltered = alphaRange * range + (1 - alphaRange) * rangeFiltered;
         }
@@ -219,7 +220,9 @@ void TofTask(void *argument)
 
         osMessageQueuePut(proximityQueueHandle, &rangeFiltered, 0, 10);
         printf("Range: %.2f mm, ambient: %.2f\n", (double) rangeFiltered, (double) ambientFiltered);
-        osDelay(10);
+        snprintf(plotString, sizeof(plotString), "%.2f\r\n", (double) rangeFiltered);
+        HAL_UART_Transmit(&huart4, (const uint8_t *) plotString, strnlen(plotString, sizeof(plotString)), 1000);
+        osDelay(100);
     }
 
     /* USER CODE END TofTask */
