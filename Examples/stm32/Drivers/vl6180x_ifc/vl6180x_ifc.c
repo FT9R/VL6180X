@@ -37,7 +37,7 @@ static void vl6180_CE(uint8_t level)
     }
 }
 
-static void vl6180x_Delay(uint32_t ms)
+static void vl6180_Delay(uint32_t ms)
 {
     osDelay(ms);
 }
@@ -60,7 +60,7 @@ void vl6180x_SetUp(vl6180x_t *dev)
     dev->interface.read = vl6180_Read;
     dev->interface.write = vl6180_Write;
     dev->interface.ce = vl6180_CE;
-    dev->interface.delay = vl6180x_Delay;
+    dev->interface.delay = vl6180_Delay;
     dev->callbacks.error = vl6180_ErrorHandler;
     dev->sampleReadyTimeout = 1000;
     vl6180x_Init(dev, true);
