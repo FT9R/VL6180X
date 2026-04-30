@@ -4,20 +4,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define VL6180X_NO_READINGS UINT16_MAX
-
+/* Function return codes */
 typedef enum {
-    VL6180X_ERR_NONE = 0,
-    VL6180X_ERR_ARG = 1 << 0,
-    VL6180X_ERR_PLATFORM = 1 << 1,
-    VL6180X_ERR_ID = 1 << 2,
-    VL6180X_ERR_STATE = 1 << 3,
-    VL6180X_ERR_TIMEOUT = 1 << 4,
-    VL6180X_ERR_I2C_READ = 1 << 5,
-    VL6180X_ERR_I2C_WRITE = 1 << 6,
-    VL6180X_ERR_INTERNAL = 1 << 7
-} vl6180x_error_t;
+    VL6180X_STAT_OK,
+    VL6180X_STAT_HANDLE_NF, // Device handle not found or identity check failed
+    VL6180X_STAT_PLATFORM_NF, // One or more of basic platform functions not found
+    VL6180X_STAT_ARG_INVALID, // Invalid argument provided
+    VL6180X_STAT_I2C_FAIL, // I2C bus failure detected
+    VL6180X_STAT_ID_NS, // Could not check device ID or its not supported
+    VL6180X_STAT_TIMEOUT, // Timeout expired for blocking operation
+    VL6180X_STAT_BUSY, // Device is still busy during asynchronous operation
+    VL6180X_STAT_SATURATED // `RESULT__RANGE_VAL` or `RESULT__ALS_VAL` saturation detected
+} vl6180x_status_t;
 
+/* `vl6180x_ReadRangeStatus` specific error codes */
 typedef enum {
     VL6180X_RANGE_ERROR_NONE, // No error; Valid measurement
     VL6180X_RANGE_ERROR_SYSERR_1, // System error; VCSEL Continuity Test; No measurement possible
@@ -33,178 +33,118 @@ typedef enum {
     VL6180X_RANGE_ERROR_RAWOFLOW, // Raw Range overflow; Target too far
     VL6180X_RANGE_ERROR_RANGEUFLOW, // Range underflow; Target too close
     VL6180X_RANGE_ERROR_RANGEOFLOW, // Range overflow; Target too far
-    VL6180X_RANGE_ERROR_DRIVER, // Custom driver error during request; See `dev.error`
 } vl6180x_range_error_t;
 
+/* Measurement mode */
+typedef enum { VL6180X_MODE_RANGE, VL6180X_MODE_ALS, VL6180X_MODE_INTERLEAVED } vl6180x_mode_t;
+
+/* Device handle structure */
 typedef struct vl6180x_s {
     struct {
+        void *handle; // Optional handle for I2C interface
+        void (*print)(const char *const fmt, ...); // Optional debug print
+        void (*ce)(uint8_t level); // Optional chip enable (gpio0), open drain - no pull - active high
         bool (*read)(void *handle, uint16_t address, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
         bool (*write)(void *handle, uint16_t address, uint16_t reg, uint8_t *data, uint16_t size, uint32_t timeout);
-        void (*ce)(uint8_t level); // Chip enable (gpio0), open drain - no pull - active high
         void (*delay)(uint32_t ms);
-        void *handle; // Optional user-defined handle for I2C interface
     } interface;
-
-    struct {
-        void (*error)(struct vl6180x_s *dev, vl6180x_error_t error,
-                      const char *funcName); // Optional error callback, to be invoked on any driver error occurrence
-    } callbacks;
 
     /* Per-device driver internals - do not modify */
     struct {
-        uint8_t scaling; // Range scaling factor (1x, 2x, or 3x)
-        int8_t ptp_offset; // Part to part range offset
         uint32_t identity; // Device handle identity to check if `vl6180x_t` structure can be safely used
+        vl6180x_status_t error; // Last detected driver error
+        uint8_t address; // Device I2C slave address
+        uint8_t scaling; // Range scaling factor (1x, 2x, or 3x)
+        int8_t ptpOffset; // Part to part range offset
+        bool rangeContinuous; // Ranging mode: `true` - continuous, `false` - single
+        bool ambientContinuous; // ALS mode: `true` - continuous, `false` - single
     } cache;
-
-    /* Read/Write safe in the same task context */
-    uint8_t address; // Device address. Provide before initialization if different from default
-    uint32_t sampleReadyTimeout; // Timeout for continuous range/ambient readings
-    vl6180x_error_t error; // Accumulated driver errors
 } vl6180x_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 /**
  * @brief Initialize sensor with settings from ST application note AN4545,
- * section "SR03 settings" - "Mandatory : private registers"
+ * section `SR03 settings` - `Mandatory: private registers`
  * @param dev device handle
+ * @param address 7bit device I2C slave address from datasheet
  * @param reset whether to perform a hardware reset by toggling the chip enable pin
+ * @return Operation exit status
  */
-void vl6180x_Init(vl6180x_t *dev, bool reset);
+vl6180x_status_t vl6180x_Init(vl6180x_t *dev, uint8_t address, bool reset);
 
 /**
  * @brief Set the I2C slave address of the sensor
  * @param dev device handle
  * @param newAddr new I2C address
+ * @return Operation exit status
  */
-void vl6180x_SetAddress(vl6180x_t *dev, uint8_t newAddr);
+vl6180x_status_t vl6180x_SetAddress(vl6180x_t *dev, uint8_t newAddr);
 
 /**
  * @brief Configure some settings for the sensor's default behavior from AN4545
- *  - "Recommended : Public registers" and "Optional: Public registers"
+ *  - `Recommended: Public registers` and `Optional: Public registers`
  * @param dev device handle
+ * @return Operation exit status
  * @note This function DOES set up GPIO1 as an interrupt output as suggested
- * @note `dev.ptp_offset` can be changed before call to adjust the part-to-part range offset
  */
-void vl6180x_ConfigureDefault(vl6180x_t *dev);
+vl6180x_status_t vl6180x_ConfigureDefault(vl6180x_t *dev);
 
 /**
  * @brief Set new range scaling factor and offset
  * @param dev device handle
- * @param new_scaling new scaling factor (1, 2, or 3)
- * @param new_offset new part-to-part range offset in mm. Provide `dev.ptp_offset` to keep existing offset
+ * @param newScaling new scaling factor (1, 2, or 3)
+ * @param newOffset new part-to-part range offset or `dev.cache.ptpOffset` to keep existing offset, [mm]
+ * @return Operation exit status
  * @note The sensor uses 1x scaling by default, giving range measurements in units of mm.
 Increasing the scaling to 2x or 3x makes it give raw values in units of 2 mm or 3 mm instead. In other words, a bigger
 scaling factor increases the sensor's potential maximum range but reduces its resolution
  */
-void vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newOffset);
+vl6180x_status_t vl6180x_SetScalingAndOffset(vl6180x_t *dev, uint8_t newScaling, int8_t newOffset);
 
 /**
- * @brief Start continuous ranging measurements with the given period
+ * @brief Start continuous `range` or `ALS count` measurements with the given period
  * @param dev device handle
- * @param period Time delay between measurements in Ranging continuous mode. Step size = 10ms
+ * @param mode which measurements to start: range, ALS or both
+ * @param period time delay between measurements in continuous mode. Step size = 10ms
+ * @return Operation exit status
+ * @note In `VL6180X_MODE_INTERLEAVED` each ambient light measurement is immediately followed by a range measurement.
  * @note The period must be greater than the time it takes to perform a measurement.
- * See section "Continuous mode limits" in the datasheet for details
+ * See section `Continuous mode limits` in the datasheet for details
  */
-void vl6180x_StartRangeContinuous(vl6180x_t *dev, uint16_t period);
+vl6180x_status_t vl6180x_StartContinuous(vl6180x_t *dev, vl6180x_mode_t mode, uint16_t period);
 
 /**
- * @brief Start continuous ambient light measurements with the given period
+ * @brief Stop continuous `range` and `ALS count` measurements
  * @param dev device handle
- * @param period Time delay between measurements in ALS continuous mode. Step size = 10ms
- * @note The period must be greater than the time it takes to perform a measurement.
- * See section "Continuous mode limits" in the datasheet for details
- */
-void vl6180x_StartAmbientContinuous(vl6180x_t *dev, uint16_t period);
-
-/**
- * @brief Start continuous interleaved measurements with the given period
- * @param dev device handle
- * @param period Time delay between measurements in interleaved continuous mode. Step size = 10ms
- * @note In this mode, each ambient light measurement is immediately followed by a range measurement.
- * @note The datasheet recommends using this mode instead of running "range and ALS continuous modes simultaneously.
- * @note The period must be greater than the time it takes to perform both measurements.
- * See section "Continuous mode limits" in the datasheet for details.
- */
-void vl6180x_StartInterleavedContinuous(vl6180x_t *dev, uint16_t period);
-
-/**
- * @brief Stop continuous range measurements
- * @param dev device handle
- * @note This will actually start a single measurement of range,
+ * @return Operation exit status
+ * @note This will actually start a single measurement of range and/or ambient light if continuous mode is not active,
  * so it's a good idea to wait a few hundred ms after calling this function to let that complete before starting
  * continuous mode again or taking a reading
  */
-void vl6180x_StopRangeContinuous(vl6180x_t *dev);
+vl6180x_status_t vl6180x_StopContinuous(vl6180x_t *dev);
 
 /**
- * @brief Stop continuous ambient light measurements
+ * @brief Get `range` or `ALS count` result
  * @param dev device handle
- * @note This will actually start a single measurement of ambient light,
- * so it's a good idea to wait a few hundred ms after calling this function to let that complete before starting
- * continuous mode again or taking a reading
+ * @param result pointer to variable to keep the result
+ * @param mode what to read: `VL6180X_MODE_RANGE` or `VL6180X_MODE_ALS`
+ * @param timeout how long wait for result, `0` - async, [ms]
+ * @return Operation exit status
+ * @note `result` will be updated only in case of successful and complete read.
+ * @note This function automatically scales range result according to the scaling factor.
+ * @note If `vl6180x_StartContinuous()` has not been called prior read, single-shot measurement will be issued
  */
-void vl6180x_StopAmbientContinuous(vl6180x_t *dev);
-
-/**
- * @brief Performs a single-shot ranging measurement
- * @param dev device handle
- * @return Measured range in millimeters or `VL6180X_NO_READINGS` in case of error/object absence
- * @note This function automatically scales the result according to the current scaling factor
- */
-uint16_t vl6180x_ReadRangeSingle(vl6180x_t *dev);
-
-/**
- * @brief Returns a range reading when continuous mode is activated
- * @param dev device handle
- * @return Measured range in millimeters or `VL6180X_NO_READINGS` in case of error/object absence
- * @note This function automatically scales the result according to the current scaling factor
- */
-uint16_t vl6180x_ReadRangeContinuous(vl6180x_t *dev);
-
-/**
- * @brief Immediately reads range result if available, otherwise returns `VL6180X_NO_READINGS`
- * @param dev device handle
- * @return Measured range in millimeters or `VL6180X_NO_READINGS` if result is not ready or in case of error/object
- * absence
- * @note This function automatically scales the result according to the current scaling factor.
- * @note Interrupt pin (gpio1) can be checked before calling this function to avoid unnecessary I2C traffic
- */
-uint16_t vl6180x_ReadRangeAsync(vl6180x_t *dev);
-
-/**
- * @brief Performs a single-shot ambient light measurement
- * @param dev device handle
- * @return Measured ambient light level or `VL6180X_NO_READINGS` in case of error
- */
-uint16_t vl6180x_ReadAmbientSingle(vl6180x_t *dev);
-
-/**
- * @brief Returns an ambient light reading when continuous mode is activated
- * @param dev device handle
- * @return Measured ambient light level or `VL6180X_NO_READINGS` in case of error
- */
-uint16_t vl6180x_ReadAmbientContinuous(vl6180x_t *dev);
-
-/**
- * @brief Immediately reads ambient light result if available, otherwise returns `VL6180X_NO_READINGS`
- * @param dev device handle
- * @return Measured ambient light level or `VL6180X_NO_READINGS` if result is not ready or in case of error
- * @note Interrupt pin (gpio1) can be checked before calling this function to avoid unnecessary I2C traffic
- */
-uint16_t vl6180x_ReadAmbientAsync(vl6180x_t *dev);
+vl6180x_status_t vl6180x_Read(vl6180x_t *dev, uint16_t *result, vl6180x_mode_t mode, uint32_t timeout);
 
 /**
  * @brief Get ranging success/error status code (Use it before using a measurement)
  * @param dev device handle
- * @return Error code - one of possible `VL6180X_RANGE_ERROR_*` values
- * or `VL6180X_RANGE_ERROR_DRIVER` in case of driver error
+ * @param rangeStatus pointer to variable to keep the ranging status code
+ * @return Operation exit status
  */
-vl6180x_range_error_t vl6180x_ReadRangeStatus(vl6180x_t *dev);
-
+vl6180x_status_t vl6180x_RangeStatus(vl6180x_t *dev, vl6180x_range_error_t *rangeStatus);
 #ifdef __cplusplus
 }
 #endif

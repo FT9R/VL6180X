@@ -1,6 +1,7 @@
 #include "vl6180x_ifc.h"
 #include "cmsis_os.h"
 #include "i2c.h"
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -22,8 +23,7 @@ static bool vl6180_Write(void *handle, uint16_t address, uint16_t reg, uint8_t *
 
 static void vl6180_CE(uint8_t level)
 {
-    switch (level)
-    {
+    switch (level) {
     case 0:
         HAL_GPIO_WritePin(VL6180X_CE_GPIO_Port, VL6180X_CE_Pin, GPIO_PIN_RESET);
         break;
@@ -42,30 +42,32 @@ static void vl6180_Delay(uint32_t ms)
     osDelay(ms);
 }
 
-static void vl6180_ErrorHandler(vl6180x_t *dev, vl6180x_error_t error, const char *funcName)
+static void vl6180_Print(const char *const fmt, ...)
 {
-    UNUSED(dev);
 #ifndef NDEBUG
-    printf("%s(): error 0x%08X\n", funcName, error);
+    va_list args;
+
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
 #endif
-    osDelay(1000);
-    HAL_I2C_DeInit(&hi2c1);
-    MX_I2C1_Init();
 }
 
-void vl6180x_SetUp(vl6180x_t *dev)
+void vl6180_SetUp(vl6180x_t *dev)
 {
+    osDelay(1000);
     memset(dev, 0, sizeof(*dev));
     dev->interface.handle = &hi2c1;
     dev->interface.read = vl6180_Read;
     dev->interface.write = vl6180_Write;
     dev->interface.ce = vl6180_CE;
     dev->interface.delay = vl6180_Delay;
-    dev->callbacks.error = vl6180_ErrorHandler;
-    dev->sampleReadyTimeout = 1000;
-    vl6180x_Init(dev, true);
-    vl6180x_ConfigureDefault(dev);
+#ifndef NDEBUG
+    dev->interface.print = vl6180_Print;
+#endif
 
-    if (dev->error != VL6180X_ERR_NONE)
+    if (vl6180x_Init(dev, 0x29, true) != VL6180X_STAT_OK)
         Error_Handler();
+
+    vl6180x_ConfigureDefault(dev);
 }

@@ -40,9 +40,9 @@
 /* USER CODE BEGIN PD */
 // #define VL6180X_SINGLE_SHOT
 // #define VL6180X_CONTINUOUS
-// #define VL6180X_INTERLEAVED
-#define VL6180X_ASYNC
-#define VL6180X_USE_INTERRUPT // Can be used with `VL6180X_ASYNC`
+#define VL6180X_INTERLEAVED
+// #define VL6180X_ASYNC
+// #define VL6180X_USE_INTERRUPT // Can be used with `VL6180X_ASYNC`
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -206,10 +206,8 @@ void LedTask(void *argument)
     /* USER CODE BEGIN LedTask */
     float proximity;
     /* Infinite loop */
-    for (;;)
-    {
-        if (osMessageQueueGet(proximityQueueHandle, &proximity, NULL, osWaitForever) == osOK)
-        {
+    for (;;) {
+        if (osMessageQueueGet(proximityQueueHandle, &proximity, NULL, osWaitForever) == osOK) {
             if (proximity < 11.0f)
                 LEDG_ON, LEDY_OFF, LEDR_OFF;
             else if (proximity < 30.0f)
@@ -233,57 +231,72 @@ void LedTask(void *argument)
 void TofTask(void *argument)
 {
     /* USER CODE BEGIN TofTask */
+    static uint32_t stackFree;
     static vl6180x_t tof;
-    static float rangeFiltered = 120;
-    static float ambientFiltered = 0;
-    const float alphaRange = 0.2f;
-    const float alphaAmbient = 0.15f;
-    const uint16_t APPLICATION_RANGE_LIMIT = 120;
+    static vl6180x_status_t statusRange, statusAmbient;
+    const uint32_t MEASUREMENT_PERIOD = 200; // [ms]
     char plotString[50] = {0};
 
-    vl6180x_SetUp(&tof);
+    static struct {
+        float filtered;
+        const float alpha;
+        uint16_t raw;
+    } ambient = {.alpha = 0.15};
+
+    static struct {
+        float filtered;
+        const float alpha;
+        uint16_t raw;
+        uint16_t limit;
+    } range = {.alpha = 0.2, .limit = 120};
+
+    vl6180_SetUp(&tof);
 #ifdef VL6180X_SINGLE_SHOT
     /* Nothing to start */
-    asm("nop");
-#elif defined(VL6180X_CONTINUOUS)
+#elif defined(VL6180X_CONTINUOUS) || defined(VL6180X_ASYNC)
     /* Choose only one: ambient or range */
-    vl6180x_StartRangeContinuous(&tof, 100);
-#elif defined(VL6180X_INTERLEAVED)
-    vl6180x_StartInterleavedContinuous(&tof, 200);
-#elif defined(VL6180X_ASYNC)
-    /* Choose only one: ambient or range */
-    vl6180x_StartRangeContinuous(&tof, 500);
+    vl6180x_StartContinuous(&tof, VL6180X_MODE_RANGE, MEASUREMENT_PERIOD);
+#elif defined VL6180X_INTERLEAVED
+    vl6180x_StartContinuous(&tof, VL6180X_MODE_INTERLEAVED, MEASUREMENT_PERIOD);
+#else
+#error "No VL6180X mode defined"
 #endif
     /* Infinite loop */
-    for (;;)
-    {
-#ifdef VL6180X_SINGLE_SHOT
-        ambientFiltered = alphaAmbient * vl6180x_ReadAmbientSingle(&tof) + (1 - alphaAmbient) * ambientFiltered;
-        rangeFiltered = alphaRange * vl6180x_ReadRangeSingle(&tof) + (1 - alphaRange) * rangeFiltered;
-#elif defined(VL6180X_CONTINUOUS)
-        rangeFiltered = alphaRange * vl6180x_ReadRangeContinuous(&tof) + (1 - alphaRange) * rangeFiltered;
-#elif defined(VL6180X_INTERLEAVED)
-        ambientFiltered = alphaAmbient * vl6180x_ReadAmbientContinuous(&tof) + (1 - alphaAmbient) * ambientFiltered;
-        rangeFiltered = alphaRange * vl6180x_ReadRangeContinuous(&tof) + (1 - alphaRange) * rangeFiltered;
-#elif defined(VL6180X_ASYNC)
-#ifdef VL6180X_USE_INTERRUPT
-        if (VL6180X_GET_INT == GPIO_PIN_RESET) // Active low
+    for (;;) {
+#if defined(VL6180X_SINGLE_SHOT) || defined(VL6180X_INTERLEAVED)
+        statusAmbient = vl6180x_Read(&tof, &ambient.raw, VL6180X_MODE_ALS, MEASUREMENT_PERIOD);
 #endif
-        {
-            uint16_t range = vl6180x_ReadRangeAsync(&tof); // Returns `VL6180X_NO_READINGS` if result is not ready
-            if (range > APPLICATION_RANGE_LIMIT)
-                range = APPLICATION_RANGE_LIMIT;
-            rangeFiltered = alphaRange * range + (1 - alphaRange) * rangeFiltered;
+#if defined(VL6180X_ASYNC) && defined(VL6180X_USE_INTERRUPT)
+        if (VL6180X_GET_INT == GPIO_PIN_RESET)
+#endif
+#ifndef VL6180X_ASYNC
+            statusRange = vl6180x_Read(&tof, &range.raw, VL6180X_MODE_RANGE, MEASUREMENT_PERIOD);
+#else
+        statusRange = vl6180x_Read(&tof, &range.raw, VL6180X_MODE_RANGE, 0);
+#endif
+
+        if (statusAmbient != VL6180X_STAT_OK)
+            printf("Incomplete ALS measurement, status: %u\n", statusAmbient);
+        if (statusRange != VL6180X_STAT_OK)
+            printf("Incomplete range measurement, status: %u\n", statusRange);
+        if (statusAmbient == VL6180X_STAT_OK && statusRange == VL6180X_STAT_OK) {
+            /* Limiter */
+            range.raw = range.raw > range.limit ? range.limit : range.raw;
+
+            /* EMA filter */
+            ambient.filtered = ambient.alpha * ambient.raw + (1.0f - ambient.alpha) * ambient.filtered;
+            range.filtered = range.alpha * range.raw + (1.0f - range.alpha) * range.filtered;
+
+            /* Logic */
+            osMessageQueuePut(proximityQueueHandle, &range.filtered, 0, 10);
+            printf("Ambient: %.2f count, range: %.2f mm\n", (double) ambient.filtered, (double) range.filtered);
+            snprintf(plotString, sizeof(plotString), "%.2f\r\n", (double) range.filtered);
+            HAL_UART_Transmit(&huart4, (const uint8_t *) plotString, strnlen(plotString, sizeof(plotString)), 1000);
         }
-#endif
 
-        osMessageQueuePut(proximityQueueHandle, &rangeFiltered, 0, 10);
-        printf("Range: %.2f mm, ambient: %.2f\n", (double) rangeFiltered, (double) ambientFiltered);
-        snprintf(plotString, sizeof(plotString), "%.2f\r\n", (double) rangeFiltered);
-        HAL_UART_Transmit(&huart4, (const uint8_t *) plotString, strnlen(plotString, sizeof(plotString)), 1000);
-        osDelay(100);
+        stackFree = osThreadGetStackSpace(osThreadGetId());
+        osDelay(MEASUREMENT_PERIOD);
     }
-
     /* USER CODE END TofTask */
 }
 
