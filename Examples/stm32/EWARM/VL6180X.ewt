@@ -1501,6 +1501,9 @@
                     <name>$PROJ_DIR$\..\Core\Src\stm32f4xx_it.c</name>
                 </file>
                 <file>
+                    <name>$PROJ_DIR$\..\Core\Src\trace.c</name>
+                </file>
+                <file>
                     <name>$PROJ_DIR$\..\Core\Src\usart.c</name>
                 </file>
             </group>

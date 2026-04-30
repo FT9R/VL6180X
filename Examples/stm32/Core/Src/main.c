@@ -110,8 +110,7 @@ int main(void)
 
     /* Infinite loop */
     /* USER CODE BEGIN WHILE */
-    while (1)
-    {
+    while (1) {
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */
@@ -196,8 +195,7 @@ void Error_Handler(void)
     /* USER CODE BEGIN Error_Handler_Debug */
     /* User can add his own implementation to report the HAL error return state */
     __disable_irq();
-    while (1)
-    {
+    while (1) {
         LEDG_OFF, LEDY_OFF, LEDR_ON;
         for (size_t i = 0; i < 1000000; i++) {}
         LEDG_OFF, LEDY_OFF, LEDR_OFF;

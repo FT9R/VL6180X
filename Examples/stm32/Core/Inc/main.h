@@ -63,6 +63,12 @@ void Error_Handler(void);
 #define LEDY_GPIO_Port        GPIOC
 #define LEDR_Pin              GPIO_PIN_15
 #define LEDR_GPIO_Port        GPIOC
+#define HOOK_IDLE_Pin         GPIO_PIN_0
+#define HOOK_IDLE_GPIO_Port   GPIOC
+#define HOOK_TICK_Pin         GPIO_PIN_1
+#define HOOK_TICK_GPIO_Port   GPIOC
+#define HOOK_TASK1_Pin        GPIO_PIN_2
+#define HOOK_TASK1_GPIO_Port  GPIOC
 #define VL6180X_INT_Pin       GPIO_PIN_3
 #define VL6180X_INT_GPIO_Port GPIOA
 #define VL6180X_CE_Pin        GPIO_PIN_4
